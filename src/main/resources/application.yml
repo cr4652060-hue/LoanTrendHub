@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    url: jdbc:sqlite:./data/loan_trend.db
+    driver-class-name: org.sqlite.JDBC
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 100MB
+
+server:
+  port: 18090

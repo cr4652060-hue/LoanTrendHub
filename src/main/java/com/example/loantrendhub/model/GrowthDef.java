@@ -1,4 +1,10 @@
 package com.example.loantrendhub.model;
 
-public class GrowthDef {
-}
+public record GrowthDef(
+        String date,
+        Double value,
+        Double dodRate,
+        Double mtdRate,
+        Double ytdRate,
+        String note
+) {}

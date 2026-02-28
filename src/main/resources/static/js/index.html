@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LoanTrendHub v2</title>
+    <script src="/js/echarts.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 16px; }
+        .row { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+        #heatmap, #trend { width: 100%; height: 420px; border: 1px solid #eee; margin-top: 12px; }
+        select[multiple] { min-width: 180px; min-height: 90px; }
+    </style>
+</head>
+<body>
+<h2>LoanTrendHub 多视角贷款日报分析台</h2>
+<div class="row">
+    <input type="file" id="files" multiple />
+    <button onclick="upload()">批量导入 Excel</button>
+    <span id="uploadResult"></span>
+</div>
+
+<div class="row">
+    <label>口径 <select id="scope"></select></label>
+    <label>日期 <input id="date" type="date" /></label>
+    <label>热力图指标
+        <select id="heatMetrics" multiple></select>
+    </label>
+    <button onclick="loadHeatmap()">刷新热力图</button>
+</div>
+<div id="heatmap"></div>
+
+<div class="row">
+    <label>开始 <input id="start" type="date" /></label>
+    <label>结束 <input id="end" type="date" /></label>
+    <label>模式
+        <select id="mode" onchange="switchMode()">
+            <option value="branch">同指标多网点</option>
+            <option value="metric">同网点多指标</option>
+        </select>
+    </label>
+    <label>指标 <select id="singleMetric"></select></label>
+    <label id="branchPickWrap">网点 <select id="branches" multiple></select></label>
+    <label id="singleBranchWrap" style="display:none;">网点 <select id="singleBranch"></select></label>
+    <label id="metricsPickWrap" style="display:none;">指标 <select id="multiMetrics" multiple></select></label>
+    <button onclick="loadTrend()">刷新多线趋势</button>
+</div>
+<div id="trend"></div>
+
+<script>
+    const heatChart = echarts.init(document.getElementById('heatmap'));
+    const trendChart = echarts.init(document.getElementById('trend'));
+
+    async function j(url, init) { const r = await fetch(url, init); return await r.json(); }
+    function selectedValues(el){return [...el.selectedOptions].map(o=>o.value)}
+
+    async function init() {
+        const scopes = await j('/api/scopes');
+        const scopeSel = document.getElementById('scope');
+        scopes.forEach(s=>scopeSel.add(new Option(s.name, s.key)));
+
+        const metrics = await j('/api/metrics');
+        const metricKeys = ['CNT_TOTAL','BAL_TOTAL','DOD_CNT','DOD_BAL','MOM_CNT','MOM_BAL','BOY_CNT','BOY_BAL','GR_CNT','GR_BAL'];
+        const pick = metrics.filter(m=>metricKeys.includes(m.metric));
+        for (const id of ['heatMetrics','singleMetric','multiMetrics']) {
+            const sel = document.getElementById(id);
+            pick.forEach(m=>sel.add(new Option(`${m.name}(${m.metric})`, m.metric)));
+        }
+        document.getElementById('singleMetric').selectedIndex = 0;
+
+        await loadBranches();
+        document.getElementById('scope').addEventListener('change', loadBranches);
+        const today = new Date().toISOString().slice(0,10);
+        document.getElementById('date').value = today;
+        document.getElementById('start').value = today.slice(0,8) + '01';
+        document.getElementById('end').value = today;
+    }
+
+    async function loadBranches() {
+        const scope = document.getElementById('scope').value;
+        const branches = await j(`/api/branches?scope=${scope}`);
+        for (const id of ['branches','singleBranch']) {
+            const sel = document.getElementById(id);
+            sel.innerHTML = '';
+            branches.forEach(b=>sel.add(new Option(b,b)));
+            if (id==='singleBranch' && branches.length) sel.value = branches[0];
+        }
+    }
+
+    async function upload() {
+        const files = document.getElementById('files').files;
+        const fd = new FormData();
+        for (const f of files) fd.append('files', f);
+        const res = await j('/api/upload', { method:'POST', body:fd });
+        document.getElementById('uploadResult').innerText = `导入完成: ${res.rows} 行`;
+        await loadBranches();
+    }
+
+    async function loadHeatmap() {
+        const scope = document.getElementById('scope').value;
+        const date = document.getElementById('date').value;
+        const metrics = selectedValues(document.getElementById('heatMetrics'));
+        if (!metrics.length) return;
+        const res = await j(`/api/heatmap?scope=${scope}&date=${date}&metrics=${metrics.join(',')}`);
+        heatChart.setOption({
+            tooltip: { position:'top' },
+            xAxis: { type:'category', data: res.x, axisLabel:{rotate:35} },
+            yAxis: { type:'category', data: res.y },
+            visualMap: { min: -10000, max: 10000, calculable:true, orient:'horizontal', left:'center', bottom:0 },
+            series: [{ type:'heatmap', data: res.data, emphasis:{itemStyle:{shadowBlur:10}} }]
+        });
+    }
+
+    function switchMode() {
+        const mode = document.getElementById('mode').value;
+        document.getElementById('branchPickWrap').style.display = mode==='branch'?'':'none';
+        document.getElementById('singleBranchWrap').style.display = mode==='metric'?'':'none';
+        document.getElementById('metricsPickWrap').style.display = mode==='metric'?'':'none';
+    }
+
+    async function loadTrend() {
+        const scope = document.getElementById('scope').value;
+        const start = document.getElementById('start').value;
+        const end = document.getElementById('end').value;
+        const mode = document.getElementById('mode').value;
+        let url = `/api/trend/multi?scope=${scope}&start=${start}&end=${end}`;
+        if (mode === 'branch') {
+            const metric = document.getElementById('singleMetric').value;
+            const branches = selectedValues(document.getElementById('branches'));
+            url += `&metric=${metric}&branches=${branches.join(',')}`;
+        } else {
+            const branch = document.getElementById('singleBranch').value;
+            const metrics = selectedValues(document.getElementById('multiMetrics'));
+            url += `&branch=${branch}&metrics=${metrics.join(',')}`;
+        }
+        const res = await j(url);
+        trendChart.setOption({
+            tooltip: { trigger:'axis' },
+            legend: { type:'scroll' },
+            xAxis: { type:'category', data: res.x },
+            yAxis: { type:'value' },
+            series: res.series.map(s => ({ name: s.name, type:'line', connectNulls:false, data: s.data }))
+        });
+    }
+
+    init();
+</script>
+</body>
+</html>

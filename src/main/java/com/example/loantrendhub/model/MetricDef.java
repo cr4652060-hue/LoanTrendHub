@@ -1,4 +1,9 @@
 package com.example.loantrendhub.model;
 
-public class MetricDef {
-}
+public record MetricDef(
+        String metric,
+        String name,
+        String unit,
+        String kind,
+        String baseMetric
+) {}
