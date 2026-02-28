@@ -1,12 +1,13 @@
 package com.example.loantrendhub.model;
 
 import java.util.List;
-import java.util.Map;
 
+/** 与前端 index.html 对齐：title/unit/x/series(name+y) */
 public record SeriesResponse(
+        String title,
+        String unit,
         List<String> x,
-        List<SeriesItem> series,
-        Map<String, Object> metric
+        List<Series> series
 ) {
-    public record SeriesItem(String name, List<Double> data) {}
+    public record Series(String name, List<Double> y) {}
 }

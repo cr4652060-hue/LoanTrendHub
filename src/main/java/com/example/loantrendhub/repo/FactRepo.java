@@ -8,6 +8,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Repository
 public class FactRepo {
@@ -18,22 +19,43 @@ public class FactRepo {
     }
 
     public int[] upsertBatch(List<FactRow> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return new int[0];
+        }
         String sql = """
                 INSERT INTO fact_trend(biz_date, scope, branch, metric, value, source_file)
                 VALUES(?,?,?,?,?,?)
                 ON CONFLICT(biz_date, scope, branch, metric)
                 DO UPDATE SET value = excluded.value, source_file = excluded.source_file
                 """;
-        return jdbcTemplate.batchUpdate(sql, rows, 500, (ps, row) -> {
-            ps.setString(1, row.bizDate());
-            ps.setString(2, row.scope());
-            ps.setString(3, row.branch());
-            ps.setString(4, row.metric());
-            ps.setObject(5, row.value());
-            ps.setString(6, row.sourceFile());
+        List<Object[]> batchArgs = rows.stream()
+                .map(row -> new Object[]{
+                        row.bizDate(),
+                        row.scope(),
+                        row.branch(),
+                        row.metric(),
+                        row.value(),
+                        row.sourceFile()
+                })
+                .toList();
+
+        return jdbcTemplate.batchUpdate(sql, batchArgs);
+    }
+    /** 数据库已有数据的日期范围（用于前端默认带出） */
+    public Map<String, String> dateRange() {
+        String sql = "SELECT MIN(biz_date) AS min_date, MAX(biz_date) AS max_date FROM fact_trend";
+        return jdbcTemplate.query(sql, rs -> {
+            String min = "";
+            String max = "";
+            if (rs.next()) {
+                String a = rs.getString("min_date");
+                String b = rs.getString("max_date");
+                min = a == null ? "" : a;
+                max = b == null ? "" : b;
+            }
+            return Map.of("min", min, "max", max);
         });
     }
-
     public List<String> findScopes() {
         return jdbcTemplate.queryForList("SELECT DISTINCT scope FROM fact_trend ORDER BY scope", String.class);
     }

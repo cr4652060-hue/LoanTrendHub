@@ -1,6 +1,5 @@
 package com.example.loantrendhub.controller;
 
-import com.example.loantrendhub.model.GrowthDef;
 import com.example.loantrendhub.model.HeatmapResponse;
 import com.example.loantrendhub.model.SeriesResponse;
 import com.example.loantrendhub.service.QueryService;
@@ -25,6 +24,12 @@ public class QueryController {
         this.queryService = queryService;
     }
 
+    /** 前端初始化：自动带出库内已有数据日期区间 */
+    @GetMapping("/dateRange")
+    public Object dateRange() {
+        return queryService.dateRange();
+    }
+
     @GetMapping("/heatmap")
     public HeatmapResponse heatmap(
             @RequestParam(name = "scope") String scope,
@@ -34,6 +39,7 @@ public class QueryController {
         return queryService.heatmap(scope, date, splitCsv(metrics));
     }
 
+    /** 正式接口：多网点/多指标趋势 */
     @GetMapping("/trend/multi")
     public SeriesResponse multiTrend(
             @RequestParam(name = "scope") String scope,
@@ -49,15 +55,31 @@ public class QueryController {
         return queryService.multiTrend(scope, metric, branchList, branch, metricList, start, end);
     }
 
-    @GetMapping("/growth")
-    public List<GrowthDef> growth(
+    /** ✅ 兼容旧前端写错的路径：/api/trendMulti */
+    @GetMapping("/trendMulti")
+    public SeriesResponse trendMultiCompat(
             @RequestParam(name = "scope") String scope,
-            @RequestParam(name = "branch") String branch,
             @RequestParam(name = "metric") String metric,
+            @RequestParam(name = "branches", required = false) String branches,
             @RequestParam(name = "start") String start,
             @RequestParam(name = "end") String end
     ) {
-        return queryService.calcGrowth(scope, branch, metric, start, end);
+        List<String> branchList = branches == null ? List.of() : splitCsv(branches);
+        return queryService.multiTrend(scope, metric, branchList, null, List.of(), start, end);
+    }
+
+    /** ✅ 增长率（前端口径：deltaMetric/baseMetric + branches） */
+    @GetMapping("/growth")
+    public SeriesResponse growth(
+            @RequestParam(name = "scope") String scope,
+            @RequestParam(name = "deltaMetric") String deltaMetric,
+            @RequestParam(name = "baseMetric") String baseMetric,
+            @RequestParam(name = "start") String start,
+            @RequestParam(name = "end") String end,
+            @RequestParam(name = "branches", required = false) String branches
+    ) {
+        List<String> branchList = branches == null ? List.of() : splitCsv(branches);
+        return queryService.growthSeries(scope, deltaMetric, baseMetric, branchList, start, end);
     }
 
     @GetMapping("/report/export")
@@ -69,10 +91,8 @@ public class QueryController {
     ) {
         Map<String, Object> payload = queryService.exportReport(scope, date, splitCsv(metrics));
         if ("html".equalsIgnoreCase(format)) {
-            String html = """
-                    <html><head><meta charset='UTF-8'><title>LoanTrendHub Report</title></head>
-                    <body><h1>贷款日报分析报告</h1><pre>%s</pre></body></html>
-                    """.formatted(payload.toString());
+            String html = "<html><head><meta charset='UTF-8'><title>LoanTrendHub Report</title></head>" +
+                    "<body><h1>贷款日报分析报告</h1><pre>" + payload + "</pre></body></html>";
             return ResponseEntity.ok()
                     .contentType(MediaType.TEXT_HTML)
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=loan_report.html")

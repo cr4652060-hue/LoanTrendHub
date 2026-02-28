@@ -1,149 +1,443 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LoanTrendHub v2</title>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <title>LoanTrendHub 多视角贷款日报分析台</title>
     <script src="/js/echarts.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; margin: 16px; }
-        .row { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
-        #heatmap, #trend { width: 100%; height: 420px; border: 1px solid #eee; margin-top: 12px; }
-        select[multiple] { min-width: 180px; min-height: 90px; }
+        :root{
+            --bg:#f6f7fb;
+            --card:#ffffff;
+            --text:#111827;
+            --muted:#6b7280;
+            --border:#e5e7eb;
+            --primary:#2563eb;
+            --primary-weak:#dbeafe;
+            --danger:#dc2626;
+            --shadow:0 8px 24px rgba(17,24,39,.08);
+            --radius:16px;
+            --gap:16px;
+            --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial;
+        }
+        *{box-sizing:border-box}
+        body{margin:0;background:var(--bg);font-family:var(--font);color:var(--text)}
+        .wrap{max-width:1200px;margin:0 auto;padding:22px}
+        .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+        .title{font-size:22px;font-weight:800;letter-spacing:.2px}
+        .subtitle{margin-top:6px;color:var(--muted);font-size:13px;line-height:1.5}
+        .badges{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+        .badge{background:var(--card);border:1px solid var(--border);border-radius:999px;padding:8px 12px;font-size:12px;color:var(--muted);box-shadow:0 2px 10px rgba(17,24,39,.04)}
+        .grid{display:grid;grid-template-columns: 1.2fr .8fr;gap:var(--gap);margin-top:18px}
+        .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px}
+        .card h3{margin:0 0 10px 0;font-size:14px;font-weight:800}
+        .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+        label{font-size:12px;color:var(--muted)}
+        input,select,textarea{border:1px solid var(--border);border-radius:12px;padding:10px 12px;background:#fff;color:var(--text);outline:none}
+        input:focus,select:focus,textarea:focus{border-color:#93c5fd;box-shadow:0 0 0 3px rgba(59,130,246,.15)}
+        textarea{width:100%;min-height:120px;resize:vertical;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;font-size:12px}
+        .btn{border:none;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer}
+        .btn.primary{background:var(--primary);color:white}
+        .btn.ghost{background:#fff;border:1px solid var(--border);color:var(--text)}
+        .btn.primary:disabled{opacity:.6;cursor:not-allowed}
+        .tabs{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+        .tab{border:1px solid var(--border);background:#fff;border-radius:999px;padding:9px 14px;font-size:13px;color:var(--muted);cursor:pointer}
+        .tab.active{background:var(--primary-weak);border-color:#93c5fd;color:#1d4ed8;font-weight:800}
+        .panel{margin-top:12px}
+        .panel.hidden{display:none}
+        .chart{height:460px;width:100%;border-radius:14px;border:1px dashed var(--border);background:linear-gradient(180deg,#fff, #fafafa)}
+        .help{color:var(--muted);font-size:12px;line-height:1.5;margin-top:8px}
+        .pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:999px;padding:6px 10px;font-size:12px;color:var(--muted);background:#fff}
+        .split{display:grid;grid-template-columns: 1fr 1fr;gap:12px}
+        .multiSelect{width:100%;min-height:160px}
+        .small{font-size:12px;color:var(--muted)}
+        @media (max-width: 960px){
+            .grid{grid-template-columns:1fr}
+            .badges{justify-content:flex-start}
+        }
     </style>
 </head>
 <body>
-<h2>LoanTrendHub 多视角贷款日报分析台</h2>
-<div class="row">
-    <input type="file" id="files" multiple />
-    <button onclick="upload()">批量导入 Excel</button>
-    <span id="uploadResult"></span>
-</div>
+<div class="wrap">
+    <div class="topbar">
+        <div>
+            <div class="title">LoanTrendHub 多视角贷款日报分析台</div>
+            <div class="subtitle">
+                支持：Excel 批量入库（主键：biz_date + scope + branch + metric 唯一覆盖）｜热力图（网点×指标）｜多网点趋势（多线折线）｜增长率（Δ ÷ 上期存量）
+            </div>
+        </div>
+        <div class="badges">
+            <div class="badge">日期区间：<span id="badgeRange">-</span></div>
+            <div class="badge">当前口径：<span id="badgeScope">-</span></div>
+            <div class="badge">网点数：<span id="badgeBranchCnt">-</span></div>
+            <div class="badge">状态：<span id="badgeStatus">初始化中…</span></div>
+        </div>
+    </div>
 
-<div class="row">
-    <label>口径 <select id="scope"></select></label>
-    <label>日期 <input id="date" type="date" /></label>
-    <label>热力图指标
-        <select id="heatMetrics" multiple></select>
-    </label>
-    <button onclick="loadHeatmap()">刷新热力图</button>
-</div>
-<div id="heatmap"></div>
+    <div class="grid">
+        <div class="card">
+            <h3>① 批量导入（Excel）</h3>
+            <div class="row">
+                <label>选择文件（可多选 .xlsx）</label>
+                <input id="fileInput" type="file" multiple accept=".xlsx"/>
+                <button class="btn primary" id="btnUpload">批量导入入库</button>
+                <button class="btn ghost" id="btnRefresh">刷新元数据</button>
+            </div>
+            <div class="help">建议一次选择多天文件批量导入；系统按主键自动覆盖，不会重复堆积。</div>
+            <div style="margin-top:10px">
+                <label>导入日志</label>
+                <textarea id="log" readonly>等待导入…</textarea>
+            </div>
+        </div>
 
-<div class="row">
-    <label>开始 <input id="start" type="date" /></label>
-    <label>结束 <input id="end" type="date" /></label>
-    <label>模式
-        <select id="mode" onchange="switchMode()">
-            <option value="branch">同指标多网点</option>
-            <option value="metric">同网点多指标</option>
-        </select>
-    </label>
-    <label>指标 <select id="singleMetric"></select></label>
-    <label id="branchPickWrap">网点 <select id="branches" multiple></select></label>
-    <label id="singleBranchWrap" style="display:none;">网点 <select id="singleBranch"></select></label>
-    <label id="metricsPickWrap" style="display:none;">指标 <select id="multiMetrics" multiple></select></label>
-    <button onclick="loadTrend()">刷新多线趋势</button>
+        <div class="card">
+            <h3>② 查询条件（通用）</h3>
+            <div class="split">
+                <div>
+                    <label>口径（scope）</label>
+                    <select id="scopeSel" style="width:100%"></select>
+                </div>
+                <div>
+                    <label>指标（metric）</label>
+                    <select id="metricSel" style="width:100%"></select>
+                </div>
+            </div>
+            <div class="split" style="margin-top:10px">
+                <div>
+                    <label>开始日期</label>
+                    <input id="start" placeholder="yyyy-MM-dd 或 2026.02.25" style="width:100%"/>
+                </div>
+                <div>
+                    <label>结束日期</label>
+                    <input id="end" placeholder="yyyy-MM-dd 或 2026.02.25" style="width:100%"/>
+                </div>
+            </div>
+
+            <div style="margin-top:10px">
+                <div class="row" style="justify-content:space-between">
+                    <label>网点（branches，多选）</label>
+                    <span class="small">不选则默认“全部网点”</span>
+                </div>
+                <select id="branchMulti" class="multiSelect" multiple></select>
+            </div>
+
+            <div style="margin-top:10px">
+                <label>网点搜索（可选）</label>
+                <div class="row">
+                    <input id="branchSearch" placeholder="输入关键字筛选" style="flex:1"/>
+                    <button class="btn ghost" id="btnSelectAll">全选</button>
+                    <button class="btn ghost" id="btnClear">清空</button>
+                </div>
+            </div>
+
+            <div class="help">
+                <div class="pill">增长率口径：增长率 = Δ(变化量) ÷ 上期存量</div>
+                <div class="help">其中 Δ 来自“变化量指标”（如 DOD_*），上期存量来自“存量指标”（如 *_TOTAL）。可解释为“今天增量占昨天存量的比例”，便于跨网点对比。</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <div class="tab active" data-tab="heat">热力图（网点×指标）</div>
+        <div class="tab" data-tab="trend">多网点趋势（多线折线）</div>
+        <div class="tab" data-tab="growth">增长率（Δ ÷ 上期存量）</div>
+    </div>
+
+    <div class="panel" id="panel-heat">
+        <div class="card">
+            <h3>热力图</h3>
+            <div class="row">
+                <div style="min-width:240px;flex:1">
+                    <label>热力图日期（date）</label>
+                    <input id="heatDate" placeholder="yyyy-MM-dd" style="width:100%"/>
+                </div>
+                <div style="min-width:420px;flex:2">
+                    <label>热力图指标（metrics，支持多选：逗号分隔）</label>
+                    <input id="heatMetrics" placeholder="例如：BAL_TOTAL,CNT_TOTAL,DOD_BAL" style="width:100%"/>
+                </div>
+                <button class="btn primary" id="btnHeat">刷新热力图</button>
+            </div>
+            <div class="help">热力图固定二维：Y=网点，X=指标，颜色=数值大小。</div>
+            <div id="heatChart" class="chart"></div>
+        </div>
+    </div>
+
+    <div class="panel hidden" id="panel-trend">
+        <div class="card">
+            <h3>多网点趋势（多线折线）</h3>
+            <div class="row">
+                <button class="btn primary" id="btnTrend">刷新多线趋势</button>
+                <span class="small">使用右侧“查询条件（通用）”的 scope/metric/dateRange/branches</span>
+            </div>
+            <div id="trendChart" class="chart"></div>
+        </div>
+    </div>
+
+    <div class="panel hidden" id="panel-growth">
+        <div class="card">
+            <h3>增长率（Δ ÷ 上期存量）</h3>
+            <div class="row">
+                <div style="min-width:360px;flex:1">
+                    <label>变化量指标（deltaMetric）</label>
+                    <input id="deltaMetric" placeholder="例如：DOD_BAL 或 DOD_CNT" style="width:100%"/>
+                </div>
+                <div style="min-width:360px;flex:1">
+                    <label>存量指标（baseMetric）</label>
+                    <input id="baseMetric" placeholder="例如：BAL_TOTAL 或 CNT_TOTAL" style="width:100%"/>
+                </div>
+                <button class="btn primary" id="btnGrowth">刷新增长率</button>
+            </div>
+            <div class="help">若上期存量=0 会导致分母为0，建议后端对分母做保护避免误导。</div>
+            <div id="growthChart" class="chart"></div>
+        </div>
+    </div>
+
 </div>
-<div id="trend"></div>
 
 <script>
-    const heatChart = echarts.init(document.getElementById('heatmap'));
-    const trendChart = echarts.init(document.getElementById('trend'));
+    const $ = (id)=>document.getElementById(id);
+    const log = (s)=>{ const el=$('log'); el.value = (el.value?el.value+"\n":"") + s; el.scrollTop = el.scrollHeight; };
 
-    async function j(url, init) { const r = await fetch(url, init); return await r.json(); }
-    function selectedValues(el){return [...el.selectedOptions].map(o=>o.value)}
-
-    async function init() {
-        const scopes = await j('/api/scopes');
-        const scopeSel = document.getElementById('scope');
-        scopes.forEach(s=>scopeSel.add(new Option(s.name, s.key)));
-
-        const metrics = await j('/api/metrics');
-        const metricKeys = ['CNT_TOTAL','BAL_TOTAL','DOD_CNT','DOD_BAL','MOM_CNT','MOM_BAL','BOY_CNT','BOY_BAL','GR_CNT','GR_BAL'];
-        const pick = metrics.filter(m=>metricKeys.includes(m.metric));
-        for (const id of ['heatMetrics','singleMetric','multiMetrics']) {
-            const sel = document.getElementById(id);
-            pick.forEach(m=>sel.add(new Option(`${m.name}(${m.metric})`, m.metric)));
+    async function jget(url){
+        const r = await fetch(url);
+        if(!r.ok){
+            const t = await r.text().catch(()=> "");
+            throw new Error(`${r.status} ${r.statusText} :: ${t}`);
         }
-        document.getElementById('singleMetric').selectedIndex = 0;
-
-        await loadBranches();
-        document.getElementById('scope').addEventListener('change', loadBranches);
-        const today = new Date().toISOString().slice(0,10);
-        document.getElementById('date').value = today;
-        document.getElementById('start').value = today.slice(0,8) + '01';
-        document.getElementById('end').value = today;
+        return r.json();
     }
-
-    async function loadBranches() {
-        const scope = document.getElementById('scope').value;
-        const branches = await j(`/api/branches?scope=${scope}`);
-        for (const id of ['branches','singleBranch']) {
-            const sel = document.getElementById(id);
-            sel.innerHTML = '';
-            branches.forEach(b=>sel.add(new Option(b,b)));
-            if (id==='singleBranch' && branches.length) sel.value = branches[0];
+    async function jpost(url, formData){
+        const r = await fetch(url, { method:'POST', body: formData });
+        if(!r.ok){
+            const t = await r.text().catch(()=> "");
+            throw new Error(`${r.status} ${r.statusText} :: ${t}`);
         }
+        return r.json();
     }
 
-    async function upload() {
-        const files = document.getElementById('files').files;
-        const fd = new FormData();
-        for (const f of files) fd.append('files', f);
-        const res = await j('/api/upload', { method:'POST', body:fd });
-        document.getElementById('uploadResult').innerText = `导入完成: ${res.rows} 行`;
-        await loadBranches();
+    function setBadge(id, val){ $(id).textContent = (val===null||val===undefined||val==="")?"-":String(val); }
+    function fillSelect(sel, arr, getVal=(x)=>x, getLabel=(x)=>x){
+        sel.innerHTML = '';
+        (arr||[]).forEach(x=>{
+            const opt=document.createElement('option');
+            opt.value = getVal(x);
+            opt.textContent = getLabel(x);
+            sel.appendChild(opt);
+        });
+    }
+    function filteredBranches(all, kw){
+        if(!kw) return all;
+        const k = kw.trim().toLowerCase();
+        return all.filter(x=> String(x).toLowerCase().includes(k));
+    }
+    function getSelectedValues(sel){
+        return Array.from(sel.selectedOptions).map(o=>o.value);
+    }
+    function activeTab(name){
+        document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===name));
+        document.querySelectorAll('.panel').forEach(p=>p.classList.add('hidden'));
+        $("panel-"+name).classList.remove('hidden');
     }
 
-    async function loadHeatmap() {
-        const scope = document.getElementById('scope').value;
-        const date = document.getElementById('date').value;
-        const metrics = selectedValues(document.getElementById('heatMetrics'));
-        if (!metrics.length) return;
-        const res = await j(`/api/heatmap?scope=${scope}&date=${date}&metrics=${metrics.join(',')}`);
+    const heatChart = echarts.init($('heatChart'));
+    const trendChart = echarts.init($('trendChart'));
+    const growthChart = echarts.init($('growthChart'));
+
+    function renderHeatmap(resp){
+        const metrics = resp.metrics || [];
+        const branches = resp.branches || [];
+        const data = (resp.data || []).map(d=>[d[0], d[1], d[2] == null ? null : Number(d[2])]);
         heatChart.setOption({
-            tooltip: { position:'top' },
-            xAxis: { type:'category', data: res.x, axisLabel:{rotate:35} },
-            yAxis: { type:'category', data: res.y },
-            visualMap: { min: -10000, max: 10000, calculable:true, orient:'horizontal', left:'center', bottom:0 },
-            series: [{ type:'heatmap', data: res.data, emphasis:{itemStyle:{shadowBlur:10}} }]
-        });
+            title:{text:`热力图：${resp.scope||''}  ${resp.date||''}`, left:10, top:10, textStyle:{fontSize:14}},
+            tooltip:{position:'top', formatter:(p)=>{
+                    const m = metrics[p.data[0]]; const b = branches[p.data[1]];
+                    const v = p.data[2];
+                    return `${b}<br/>${m}: <b>${v==null?'-':v}</b>`;
+                }},
+            grid:{top:54, left:120, right:20, bottom:60},
+            xAxis:{type:'category', data: metrics, axisLabel:{rotate:25}},
+            yAxis:{type:'category', data: branches},
+            visualMap:{min: resp.min ?? 0, max: resp.max ?? 1, calculable:true, orient:'horizontal', left:'center', bottom:10},
+            series:[{type:'heatmap', data, label:{show:false}, emphasis:{itemStyle:{shadowBlur:10, shadowColor:'rgba(0,0,0,.18)'}}}]
+        }, true);
     }
 
-    function switchMode() {
-        const mode = document.getElementById('mode').value;
-        document.getElementById('branchPickWrap').style.display = mode==='branch'?'':'none';
-        document.getElementById('singleBranchWrap').style.display = mode==='metric'?'':'none';
-        document.getElementById('metricsPickWrap').style.display = mode==='metric'?'':'none';
+    function renderMultiLine(containerChart, title, x, seriesList, yUnit){
+        containerChart.setOption({
+            title:{text:title, left:10, top:10, textStyle:{fontSize:14}},
+            tooltip:{trigger:'axis'},
+            legend:{top:34, left:10},
+            grid:{top:80, left:60, right:20, bottom:50},
+            xAxis:{type:'category', data:x || []},
+            yAxis:{type:'value', name:yUnit||''},
+            dataZoom:[{type:'inside'},{type:'slider'}],
+            series:(seriesList||[]).map(s=>({
+                name:s.name, type:'line', smooth:true, showSymbol:false, data:s.y || []
+            }))
+        }, true);
     }
 
-    async function loadTrend() {
-        const scope = document.getElementById('scope').value;
-        const start = document.getElementById('start').value;
-        const end = document.getElementById('end').value;
-        const mode = document.getElementById('mode').value;
-        let url = `/api/trend/multi?scope=${scope}&start=${start}&end=${end}`;
-        if (mode === 'branch') {
-            const metric = document.getElementById('singleMetric').value;
-            const branches = selectedValues(document.getElementById('branches'));
-            url += `&metric=${metric}&branches=${branches.join(',')}`;
-        } else {
-            const branch = document.getElementById('singleBranch').value;
-            const metrics = selectedValues(document.getElementById('multiMetrics'));
-            url += `&branch=${branch}&metrics=${metrics.join(',')}`;
+    let ALL_BRANCHES = [];
+
+    async function refreshMeta(){
+        $('badgeStatus').textContent = '加载元数据…';
+        try{
+            const dr = await jget('/api/dateRange');
+            if(dr && dr.min && dr.max){
+                setBadge('badgeRange', `${dr.min} ~ ${dr.max}`);
+                $('start').value = dr.min;
+                $('end').value = dr.max;
+                $('heatDate').value = dr.max;
+            } else {
+                setBadge('badgeRange', '-');
+            }
+
+            const scopes = await jget('/api/scopes');
+            fillSelect($('scopeSel'), scopes);
+
+            const metrics = await jget('/api/metrics');
+            fillSelect($('metricSel'), metrics, m=>m.key, m=>`${m.label}（${m.key}）`);
+
+            const defaultScope = scopes?.[0] ?? '';
+            const defaultMetric = metrics?.[0]?.key ?? '';
+            $('scopeSel').value = defaultScope;
+            $('metricSel').value = defaultMetric;
+            setBadge('badgeScope', defaultScope || '-');
+
+            ALL_BRANCHES = await jget('/api/branches?scope=' + encodeURIComponent(defaultScope || ''));
+            renderBranchList();
+            setBadge('badgeBranchCnt', ALL_BRANCHES.length);
+
+            $('badgeStatus').textContent = '就绪';
+            log(`[OK] 元数据加载完成：scopes=${(scopes||[]).length} metrics=${(metrics||[]).length} branches=${ALL_BRANCHES.length}`);
+        }catch(e){
+            $('badgeStatus').textContent = '初始化失败';
+            log(`[ERR] 初始化失败：${e.message}`);
+            console.error(e);
         }
-        const res = await j(url);
-        trendChart.setOption({
-            tooltip: { trigger:'axis' },
-            legend: { type:'scroll' },
-            xAxis: { type:'category', data: res.x },
-            yAxis: { type:'value' },
-            series: res.series.map(s => ({ name: s.name, type:'line', connectNulls:false, data: s.data }))
-        });
     }
 
-    init();
+    function renderBranchList(){
+        const kw = $('branchSearch').value || '';
+        const list = filteredBranches(ALL_BRANCHES, kw);
+        const sel = $('branchMulti');
+        const keep = new Set(getSelectedValues(sel));
+        sel.innerHTML='';
+        list.forEach(b=>{
+            const opt=document.createElement('option');
+            opt.value=b;
+            opt.textContent=b;
+            if(keep.has(b)) opt.selected=true;
+            sel.appendChild(opt);
+        });
+        setBadge('badgeBranchCnt', ALL_BRANCHES.length);
+    }
+
+    async function doUpload(){
+        const files = $('fileInput').files;
+        if(!files || files.length===0){
+            log('[WARN] 未选择文件');
+            return;
+        }
+        const fd = new FormData();
+        Array.from(files).forEach(f=>fd.append('files', f));
+
+        $('btnUpload').disabled = true;
+        try{
+            log(`[INFO] 开始上传：${files.length} 个文件…`);
+            const res = await jpost('/api/upload', fd);
+            log('[OK] 导入完成：' + JSON.stringify(res));
+            await refreshMeta();
+        }catch(e){
+            log('[ERR] 导入失败：' + e.message);
+            console.error(e);
+        }finally{
+            $('btnUpload').disabled = false;
+        }
+    }
+
+    async function doHeat(){
+        try{
+            const scope = $('scopeSel').value || '';
+            const date = $('heatDate').value || '';
+            const metrics = ($('heatMetrics').value || '').trim();
+            if(!date){ log('[WARN] 热力图日期不能为空'); return; }
+            if(!metrics){ log('[WARN] 热力图指标不能为空'); return; }
+            const url = `/api/heatmap?scope=${encodeURIComponent(scope)}&date=${encodeURIComponent(date)}&metrics=${encodeURIComponent(metrics)}`;
+            const resp = await jget(url);
+            renderHeatmap(resp);
+            log('[OK] 热力图刷新完成');
+        }catch(e){
+            log('[ERR] 热力图失败：' + e.message);
+            console.error(e);
+        }
+    }
+
+    async function doTrendMulti(){
+        try{
+            const scope = $('scopeSel').value || '';
+            const metric = $('metricSel').value || '';
+            const start = $('start').value || '';
+            const end = $('end').value || '';
+            const branches = getSelectedValues($('branchMulti')).join(',');
+            const url = `/api/trend/multi?scope=${encodeURIComponent(scope)}&metric=${encodeURIComponent(metric)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&branches=${encodeURIComponent(branches)}`;
+            const resp = await jget(url);
+            renderMultiLine(trendChart, resp.title || `趋势：${scope} / ${metric}`, resp.x || [], resp.series || [], resp.unit || '');
+            log('[OK] 多线趋势刷新完成');
+        }catch(e){
+            log('[ERR] 多线趋势失败：' + e.message);
+            console.error(e);
+        }
+    }
+
+    async function doGrowth(){
+        try{
+            const scope = $('scopeSel').value || '';
+            const start = $('start').value || '';
+            const end = $('end').value || '';
+            const branches = getSelectedValues($('branchMulti')).join(',');
+            const deltaMetric = ($('deltaMetric').value || '').trim();
+            const baseMetric = ($('baseMetric').value || '').trim();
+            if(!deltaMetric || !baseMetric){
+                log('[WARN] 增长率需要填写 变化量指标 与 存量指标');
+                return;
+            }
+            const url = `/api/growth?scope=${encodeURIComponent(scope)}&deltaMetric=${encodeURIComponent(deltaMetric)}&baseMetric=${encodeURIComponent(baseMetric)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&branches=${encodeURIComponent(branches)}`;
+            const resp = await jget(url);
+            renderMultiLine(growthChart, resp.title || `增长率：${scope}`, resp.x || [], resp.series || [], resp.unit || '');
+            log('[OK] 增长率刷新完成');
+        }catch(e){
+            log('[ERR] 增长率失败：' + e.message);
+            console.error(e);
+        }
+    }
+
+    document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click', ()=>activeTab(t.dataset.tab)));
+    $('btnUpload').addEventListener('click', doUpload);
+    $('btnRefresh').addEventListener('click', refreshMeta);
+    $('btnHeat').addEventListener('click', doHeat);
+    $('btnTrend').addEventListener('click', doTrendMulti);
+    $('btnGrowth').addEventListener('click', doGrowth);
+
+    $('scopeSel').addEventListener('change', async ()=>{
+        const scope = $('scopeSel').value || '';
+        setBadge('badgeScope', scope || '-');
+        try{
+            ALL_BRANCHES = await jget('/api/branches?scope=' + encodeURIComponent(scope));
+            $('branchSearch').value='';
+            renderBranchList();
+            log(`[OK] 切换口径：${scope}，branches=${ALL_BRANCHES.length}`);
+        }catch(e){
+            log('[ERR] 获取网点失败：' + e.message);
+        }
+    });
+
+    $('branchSearch').addEventListener('input', renderBranchList);
+    $('btnSelectAll').addEventListener('click', ()=> Array.from($('branchMulti').options).forEach(o=>o.selected=true));
+    $('btnClear').addEventListener('click', ()=> Array.from($('branchMulti').options).forEach(o=>o.selected=false));
+    window.addEventListener('resize', ()=>{ heatChart.resize(); trendChart.resize(); growthChart.resize(); });
+
+    refreshMeta();
 </script>
 </body>
 </html>
