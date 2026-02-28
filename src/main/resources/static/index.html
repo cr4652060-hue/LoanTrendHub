@@ -278,7 +278,12 @@
     }
 
     let ALL_BRANCHES = [];
+    let SCOPE_OPTIONS = [];
 
+    function getScopeName(scopeKey){
+        const hit = SCOPE_OPTIONS.find(x=>x.key===scopeKey);
+        return hit ? hit.name : scopeKey;
+    }
     async function refreshMeta(){
         $('badgeStatus').textContent = '加载元数据…';
         try{
@@ -293,18 +298,19 @@
             }
 
             const scopes = await jget('/api/scopes');
-            fillSelect($('scopeSel'), scopes);
+            SCOPE_OPTIONS = (scopes || []).map(item=>({ key:item?.key||'', name:item?.name||item?.key||'' })).filter(item=>item.key);
+            fillSelect($('scopeSel'), SCOPE_OPTIONS, item=>item.key, item=>item.name);
 
             const metrics = await jget('/api/metrics');
-            fillSelect($('metricSel'), metrics, m=>m.key, m=>`${m.label}（${m.key}）`);
+            fillSelect($('metricSel'), metrics, m=>m.metric, m=>`${m.name}（${m.metric}）`);
 
-            const defaultScope = scopes?.[0] ?? '';
-            const defaultMetric = metrics?.[0]?.key ?? '';
+            const defaultScope = SCOPE_OPTIONS?.[0]?.key ?? '';
+            const defaultMetric = metrics?.[0]?.metric ?? '';
             $('scopeSel').value = defaultScope;
             $('metricSel').value = defaultMetric;
-            setBadge('badgeScope', defaultScope || '-');
+            setBadge('badgeScope', getScopeName(defaultScope) || '-');
 
-            ALL_BRANCHES = await jget('/api/branches?scope=' + encodeURIComponent(defaultScope || ''));
+            ALL_BRANCHES = await jget('/api/branches?scope=' + encodeURIComponent(defaultScope));
             renderBranchList();
             setBadge('badgeBranchCnt', ALL_BRANCHES.length);
 
@@ -421,7 +427,7 @@
 
     $('scopeSel').addEventListener('change', async ()=>{
         const scope = $('scopeSel').value || '';
-        setBadge('badgeScope', scope || '-');
+        setBadge('badgeScope', getScopeName(scope) || '-');
         try{
             ALL_BRANCHES = await jget('/api/branches?scope=' + encodeURIComponent(scope));
             $('branchSearch').value='';

@@ -2,6 +2,7 @@ package com.example.loantrendhub.service;
 
 import com.example.loantrendhub.model.*;
 import com.example.loantrendhub.repo.FactRepo;
+import com.example.loantrendhub.util.ScopeUtil;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -25,11 +26,12 @@ public class QueryService {
 
     public List<String> scopes() { return factRepo.findScopes(); }
 
-    public List<String> branches(String scope) { return factRepo.findBranches(scope); }
+    public List<String> branches(String scope) { return factRepo.findBranches(ScopeUtil.normalize(scope)); }
 
     public List<MetricDef> metrics() { return metricService.listMetrics(); }
 
     public HeatmapResponse heatmap(String scope, String date, List<String> metrics) {
+        scope = ScopeUtil.normalize(scope);
         List<String> branches = branches(scope);
 
         Map<String, Integer> metricIdx = new HashMap<>();
@@ -76,6 +78,7 @@ public class QueryService {
                                      List<String> metrics,
                                      String start,
                                      String end) {
+        scope = ScopeUtil.normalize(scope);
         if (metric != null && !metric.isBlank() && branches != null && !branches.isEmpty()) {
             return seriesByBranches(scope, metric, branches, start, end);
         }
@@ -141,7 +144,7 @@ public class QueryService {
                                        List<String> branches,
                                        String start,
                                        String end) {
-
+        scope = ScopeUtil.normalize(scope);
         List<String> dates = factRepo.findDates(scope, start, end);
         if (dates.isEmpty()) return new SeriesResponse("增长率：" + scope, "%", List.of(), List.of());
 
@@ -187,6 +190,7 @@ public class QueryService {
     }
 
     public Map<String, Object> exportReport(String scope, String date, List<String> metrics) {
+        scope = ScopeUtil.normalize(scope);
         HeatmapResponse hm = heatmap(scope, date, metrics);
         return Map.of(
                 "title", "贷款多视角日报分析",

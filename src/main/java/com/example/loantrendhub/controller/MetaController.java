@@ -2,6 +2,7 @@ package com.example.loantrendhub.controller;
 
 import com.example.loantrendhub.model.MetricDef;
 import com.example.loantrendhub.service.QueryService;
+import com.example.loantrendhub.util.ScopeUtil;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -22,11 +23,10 @@ public class MetaController {
     @GetMapping("/scopes")
     public List<Map<String, String>> scopes() {
         return queryService.scopes().stream()
-                .map(s -> Map.of("key", s, "name", switch (s) {
-                    case "PHY" -> "实体贷款（纯账面）";
-                    case "ADJ" -> "实体贷款（还原剔转）";
-                    default -> s;
-                }))
+                .map(ScopeUtil::normalize)
+                .distinct()
+                .map(s -> Map.of("key", s, "name", ScopeUtil.displayName(s)))
+
                 .toList();
     }
 

@@ -2,6 +2,7 @@ package com.example.loantrendhub.service;
 
 import com.example.loantrendhub.model.FactRow;
 import com.example.loantrendhub.repo.FactRepo;
+import com.example.loantrendhub.util.ScopeUtil;
 import com.example.loantrendhub.util.DateUtil;
 import com.example.loantrendhub.util.ExcelUtil.HeaderResolver;
 import org.apache.poi.ss.usermodel.*;
@@ -16,6 +17,7 @@ import java.util.regex.Pattern;
 @Service
 public class IngestService {
     private static final Pattern DATE_PATTERN = Pattern.compile("(20\\d{2})[.-/](\\d{1,2})[.-/](\\d{1,2})");
+    private static final Set<String> INVALID_BRANCH = Set.of("单位", "合计", "各项贷款", "总计");
     private final FactRepo factRepo;
 
     public IngestService(FactRepo factRepo) {
@@ -95,7 +97,7 @@ public class IngestService {
 
             for (Map.Entry<Integer, String> e : metricByCol.entrySet()) {
                 int c = e.getKey();
-                String scope = scopeByCol.getOrDefault(c, "PHY");
+                String scope = ScopeUtil.normalize(scopeByCol.getOrDefault(c, "PHY"));
                 Double value = parseNumeric(row.getCell(c), formatter);
                 if (value == null) continue;
                 rows.add(new FactRow(bizDate, scope, branch, e.getValue(), value, sourceFile));
@@ -128,10 +130,15 @@ public class IngestService {
 
     private int detectBranchCol(Sheet sheet, DataFormatter formatter, int headerDepth) {
         // 1) 优先在表头区找 “单位”
+        int maxCol = 0;
+        for (int r = 0; r <= headerDepth; r++) {
+            Row row = sheet.getRow(r);
+            if (row != null && row.getLastCellNum() > maxCol) maxCol = row.getLastCellNum();
+        }
         for (int r = 0; r <= headerDepth; r++) {
             Row row = sheet.getRow(r);
             if (row == null) continue;
-            for (int c = 0; c < Math.max(5, row.getLastCellNum()); c++) {
+            for (int c = 0; c < Math.max(maxCol, row.getLastCellNum()); c++) {
                 String t = formatter.formatCellValue(row.getCell(c)).trim();
                 if ("单位".equals(t) || "网点".equals(t) || t.contains("单位")) return c;
             }
@@ -140,17 +147,26 @@ public class IngestService {
         int dataStart = headerDepth + 1;
         int sampleEnd = Math.min(sheet.getLastRowNum(), dataStart + 10);
 
-        int score0 = 0;
-        int score1 = 0;
+        int[] scores = new int[Math.max(maxCol, 2)];
         for (int r = dataStart; r <= sampleEnd; r++) {
             Row row = sheet.getRow(r);
             if (row == null) continue;
-            String c0 = formatter.formatCellValue(row.getCell(0)).trim();
-            String c1 = formatter.formatCellValue(row.getCell(1)).trim();
-            if (!c0.isBlank() && looksLikeBranch(c0)) score0++;
-            if (!c1.isBlank() && looksLikeBranch(c1)) score1++;
+
+            for (int c = 0; c < scores.length; c++) {
+                String text = formatter.formatCellValue(row.getCell(c)).trim();
+                if (!text.isBlank() && looksLikeBranch(text)) scores[c]++;
+            }
         }
-        return score1 >= score0 ? 1 : 0;
+
+        int bestCol = 0;
+        int bestScore = -1;
+        for (int c = 0; c < scores.length; c++) {
+            if (scores[c] > bestScore) {
+                bestScore = scores[c];
+                bestCol = c;
+            }
+        }
+        return bestCol;
     }
 
     private boolean looksLikeBranch(String s) {
