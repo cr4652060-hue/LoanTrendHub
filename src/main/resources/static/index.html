@@ -540,7 +540,8 @@ function setMultiSelected(sel, values){
             const metric = $('metricSel').value || '';
             const start = $('start').value || '';
             const end = $('end').value || '';
-            const branches = getSelectedValues($('branchMulti')).join(',');
+            const branchArr = getSelectedValues($('branchMulti'));
+            const branches = (branchArr.length ? branchArr : ALL_BRANCHES).join(',');
             const url = `/api/trend/multi?scope=${encodeURIComponent(scope)}&metric=${encodeURIComponent(metric)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&branches=${encodeURIComponent(branches)}`;
             const resp = await jget(url);
             renderMultiLine(trendChart, resp.title || `趋势：${scope} / ${metric}`, resp.x || [], resp.series || [], resp.unit || '');
@@ -556,7 +557,8 @@ function setMultiSelected(sel, values){
             const scope = $('scopeSel').value || '';
             const start = $('start').value || '';
             const end = $('end').value || '';
-            const branches = getSelectedValues($('branchMulti')).join(',');
+            const branchArr = getSelectedValues($('branchMulti'));
+            const branches = (branchArr.length ? branchArr : ALL_BRANCHES).join(',');
             let deltaMetric = ($('deltaMetric').value || '').trim();
             const ds = ($('deltaSel')?.value || '').trim();
             if(ds) deltaMetric = ds;
