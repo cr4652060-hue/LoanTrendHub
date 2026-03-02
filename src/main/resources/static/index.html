@@ -279,6 +279,13 @@ function setMultiSelected(sel, values){
     const trendChart = echarts.init($('trendChart'));
     const growthChart = echarts.init($('growthChart'));
 
+    const BRANCH_PRIORITY = [
+        '营业部','界湖','大庄','张庄','依汶','马牧池','岸堤','孙祖','双喉','青驼','砖埠','葛沟','杨坡','蒲汪','湖头','苏村','铜井',
+        '辛集','朱家里庄','中高湖','岱庄','高里','河阳','大王庄','东张哨','库沟','城区','开发区','小微贷','小微贷-房贷','府前','汉街','才山','公司','经营中心'
+    ];
+    const BRANCH_ORDER_MAP = new Map(BRANCH_PRIORITY.map((name, idx) => [name, idx]));
+
+
     function getScopeName(scopeKey){
         const hit = (SCOPE_OPTIONS || []).find(x => String(x.key) === String(scopeKey));
         return hit?.name || scopeKey || '';
@@ -299,9 +306,10 @@ function setMultiSelected(sel, values){
         const safeSeries = (series || []).map(s => ({
             type: 'line',
             name: s?.name || '-',
-            data: s?.data || [],
+            data: s?.data || s?.y || [],
             smooth: true,
             showSymbol: false,
+            connectNulls: false,
             emphasis: { focus: 'series' }
         }));
         chart.setOption({
@@ -321,10 +329,10 @@ function setMultiSelected(sel, values){
     }
 
     function renderHeatmap(resp){
-        const x = resp?.x || [];
-        const y = resp?.y || [];
+        const x = resp?.x || resp?.metrics || [];
+        const y = resp?.y || resp?.branches || [];
         const data = resp?.data || [];
-        const title = resp?.title || '热力图';
+        const title = resp?.title || `热力图：${getScopeName(resp?.scope || $('scopeSel')?.value || '')}`;
         const unit = resp?.unit || '';
         let min = Number.isFinite(resp?.min) ? resp.min : null;
         let max = Number.isFinite(resp?.max) ? resp.max : null;
@@ -384,6 +392,32 @@ function setMultiSelected(sel, values){
         }, true);
     }
 
+    function normalizeBranchName(name){
+        return String(name || '')
+            .replace(/\n/g, '')
+            .replace(/[：:。．\.]/g, '')
+            .replace(/\s+/g, '')
+            .trim();
+    }
+
+    function normalizeBranchOptions(branches){
+        const unique = [];
+        const seen = new Set();
+        (branches || []).forEach(raw => {
+            const n = normalizeBranchName(raw);
+            if(!n || n === '合计' || n.includes('合计')) return;
+            if(seen.has(n)) return;
+            seen.add(n);
+            unique.push(n);
+        });
+        unique.sort((a,b)=>{
+            const ai = BRANCH_ORDER_MAP.has(a) ? BRANCH_ORDER_MAP.get(a) : Number.MAX_SAFE_INTEGER;
+            const bi = BRANCH_ORDER_MAP.has(b) ? BRANCH_ORDER_MAP.get(b) : Number.MAX_SAFE_INTEGER;
+            if(ai !== bi) return ai - bi;
+            return a.localeCompare(b, 'zh-Hans-CN');
+        });
+        return unique;
+    }
 
 
     async function refreshMeta(){
@@ -418,7 +452,7 @@ function setMultiSelected(sel, values){
             $('metricSel').value = defaultMetric;
             setBadge('badgeScope', getScopeName(defaultScope) || '-');
 
-            ALL_BRANCHES = await jget('/api/branches?scope=' + encodeURIComponent(defaultScope));
+            ALL_BRANCHES = normalizeBranchOptions(await jget('/api/branches?scope=' + encodeURIComponent(defaultScope)));
             renderBranchList();
             setBadge('badgeBranchCnt', ALL_BRANCHES.length);
 
@@ -557,7 +591,7 @@ function setMultiSelected(sel, values){
         const scope = $('scopeSel').value || '';
         setBadge('badgeScope', getScopeName(scope) || '-');
         try{
-            ALL_BRANCHES = await jget('/api/branches?scope=' + encodeURIComponent(scope));
+            ALL_BRANCHES = normalizeBranchOptions(await jget('/api/branches?scope=' + encodeURIComponent(scope)));
             $('branchSearch').value='';
             renderBranchList();
             log(`[OK] 切换口径：${scope}，branches=${ALL_BRANCHES.length}`);
