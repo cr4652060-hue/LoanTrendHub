@@ -273,6 +273,119 @@ function setMultiSelected(sel, values){
   }
 }
 
+    let SCOPE_OPTIONS = [];
+    let ALL_BRANCHES = [];
+    const heatChart = echarts.init($('heatChart'));
+    const trendChart = echarts.init($('trendChart'));
+    const growthChart = echarts.init($('growthChart'));
+
+    function getScopeName(scopeKey){
+        const hit = (SCOPE_OPTIONS || []).find(x => String(x.key) === String(scopeKey));
+        return hit?.name || scopeKey || '';
+    }
+
+    function activeTab(name){
+        document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+        document.querySelectorAll('.panel').forEach(p => p.classList.add('hidden'));
+        $('panel-' + name)?.classList.remove('hidden');
+        setTimeout(() => {
+            heatChart.resize();
+            trendChart.resize();
+            growthChart.resize();
+        }, 0);
+    }
+
+    function renderMultiLine(chart, title, x, series, unit){
+        const safeSeries = (series || []).map(s => ({
+            type: 'line',
+            name: s?.name || '-',
+            data: s?.data || [],
+            smooth: true,
+            showSymbol: false,
+            emphasis: { focus: 'series' }
+        }));
+        chart.setOption({
+            animation: false,
+            title: { text: title || '' },
+            tooltip: { trigger: 'axis' },
+            legend: { type: 'scroll', top: 28 },
+            grid: { left: 60, right: 24, top: 76, bottom: 70 },
+            xAxis: { type: 'category', data: x || [] },
+            yAxis: { type: 'value', name: unit || '' },
+            dataZoom: [
+                { type: 'inside', xAxisIndex: 0 },
+                { type: 'slider', xAxisIndex: 0, height: 18, bottom: 20 }
+            ],
+            series: safeSeries
+        }, true);
+    }
+
+    function renderHeatmap(resp){
+        const x = resp?.x || [];
+        const y = resp?.y || [];
+        const data = resp?.data || [];
+        const title = resp?.title || '热力图';
+        const unit = resp?.unit || '';
+        let min = Number.isFinite(resp?.min) ? resp.min : null;
+        let max = Number.isFinite(resp?.max) ? resp.max : null;
+        if(min === null || max === null){
+            const values = data.map(d => Number(d?.[2])).filter(Number.isFinite);
+            min = values.length ? Math.min(...values) : 0;
+            max = values.length ? Math.max(...values) : 1;
+        }
+        if(min === max){
+            max = min + 1;
+        }
+
+        heatChart.setOption({
+            animation: false,
+            title: { text: title },
+            tooltip: {
+                position: 'top',
+                formatter: (p) => {
+                    const val = Array.isArray(p?.data) ? p.data[2] : '-';
+                    return `${y[p.data[1]] || ''}<br/>${x[p.data[0]] || ''}：${val}${unit ? ' ' + unit : ''}`;
+                }
+            },
+            grid: { left: 130, right: 42, top: 56, bottom: 100 },
+            xAxis: {
+                type: 'category',
+                data: x,
+                splitArea: { show: true },
+                axisLabel: { rotate: 30 }
+            },
+            yAxis: {
+                type: 'category',
+                data: y,
+                splitArea: { show: true }
+            },
+            visualMap: {
+                min,
+                max,
+                calculable: true,
+                orient: 'horizontal',
+                left: 'center',
+                bottom: 50,
+                inRange: { color: ['#e0f2fe', '#38bdf8', '#0f766e', '#f59e0b', '#b91c1c'] }
+            },
+            dataZoom: [
+                { type: 'inside', yAxisIndex: 0 },
+                { type: 'inside', xAxisIndex: 0 },
+                { type: 'slider', yAxisIndex: 0, right: 10 },
+                { type: 'slider', xAxisIndex: 0, height: 16, bottom: 20 }
+            ],
+            series: [{
+                name: 'value',
+                type: 'heatmap',
+                data,
+                label: { show: false },
+                emphasis: { itemStyle: { shadowBlur: 8, shadowColor: 'rgba(0,0,0,0.25)' } }
+            }]
+        }, true);
+    }
+
+
+
     async function refreshMeta(){
         $('badgeStatus').textContent = '加载元数据…';
         try{
