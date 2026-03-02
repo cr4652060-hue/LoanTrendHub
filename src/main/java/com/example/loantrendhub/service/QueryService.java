@@ -2,7 +2,7 @@ package com.example.loantrendhub.service;
 
 import com.example.loantrendhub.model.*;
 import com.example.loantrendhub.repo.FactRepo;
-import com.example.loantrendhub.util.ScopeUtil;
+import com.example.loantrendhub.util.DateUtil;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -11,6 +11,17 @@ import java.util.stream.Collectors;
 
 @Service
 public class QueryService {
+    private static String normalizeBranch(String raw){
+        if(raw==null) return "";
+        String b = raw.trim();
+        b = b.replace('\u00A0',' ').replace('\u3000',' ').trim();
+        if (b.endsWith("分理处")) {
+            b = b.substring(0, b.length() - "分理处".length()).trim();
+        }
+        b = b.replaceAll("\\s+", " ");
+        return b;
+    }
+
     private static final double EPSILON = 1e-9;
     private final FactRepo factRepo;
     private final MetricService metricService;
@@ -26,12 +37,20 @@ public class QueryService {
 
     public List<String> scopes() { return factRepo.findScopes(); }
 
-    public List<String> branches(String scope) { return factRepo.findBranches(ScopeUtil.normalize(scope)); }
+    public List<String> branches(String scope) {
+    // 从事实表取网点，但要归一化并去重（避免“汉街/汉街分理处”重复）
+    return factRepo.findBranches(DateUtil.normalizeScope(scope)).stream()
+            .map(QueryService::normalizeBranch)
+            .filter(s -> s != null && !s.trim().isEmpty())
+            .distinct()
+            .sorted()
+            .toList();
+}
 
     public List<MetricDef> metrics() { return metricService.listMetrics(); }
 
     public HeatmapResponse heatmap(String scope, String date, List<String> metrics) {
-        scope = ScopeUtil.normalize(scope);
+        scope = DateUtil.normalizeScope(scope);
         List<String> branches = branches(scope);
 
         Map<String, Integer> metricIdx = new HashMap<>();
@@ -78,11 +97,11 @@ public class QueryService {
                                      List<String> metrics,
                                      String start,
                                      String end) {
-        scope = ScopeUtil.normalize(scope);
-        if (metric != null && !metric.isBlank() && branches != null && !branches.isEmpty()) {
+        scope = DateUtil.normalizeScope(scope);
+        if (metric != null && !metric.trim().isEmpty() && branches != null && !branches.isEmpty()) {
             return seriesByBranches(scope, metric, branches, start, end);
         }
-        if (branch != null && !branch.isBlank() && metrics != null && !metrics.isEmpty()) {
+        if (branch != null && !branch.trim().isEmpty() && metrics != null && !metrics.isEmpty()) {
             return seriesByMetrics(scope, branch, metrics, start, end);
         }
         return new SeriesResponse("趋势：" + scope, "", List.of(), List.of());
@@ -144,7 +163,7 @@ public class QueryService {
                                        List<String> branches,
                                        String start,
                                        String end) {
-        scope = ScopeUtil.normalize(scope);
+        scope = DateUtil.normalizeScope(scope);
         List<String> dates = factRepo.findDates(scope, start, end);
         if (dates.isEmpty()) return new SeriesResponse("增长率：" + scope, "%", List.of(), List.of());
 
@@ -190,7 +209,7 @@ public class QueryService {
     }
 
     public Map<String, Object> exportReport(String scope, String date, List<String> metrics) {
-        scope = ScopeUtil.normalize(scope);
+        scope = DateUtil.normalizeScope(scope);
         HeatmapResponse hm = heatmap(scope, date, metrics);
         return Map.of(
                 "title", "贷款多视角日报分析",

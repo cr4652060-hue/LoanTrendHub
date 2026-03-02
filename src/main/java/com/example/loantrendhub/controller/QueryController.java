@@ -107,7 +107,7 @@ public class QueryController {
     private List<String> splitCsv(String s) {
         return Arrays.stream(s.split(","))
                 .map(String::trim)
-                .filter(v -> !v.isBlank())
+                .filter(v -> v != null && !v.trim().isEmpty())
                 .toList();
     }
 }

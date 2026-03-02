@@ -28,4 +28,24 @@ public final class DateUtil {
         }
         return null;
     }
+
+
+    public static String normalizeScope(String raw) {
+        if (raw == null) return "PHY";
+        String text = raw.trim();
+        if (text.isEmpty()) return "PHY";
+        String compact = text.replace("（", "(").replace("）", ")").replace(" ", "");
+        return switch (compact.toUpperCase()) {
+            case "PHY", "实体贷款", "实体贷款(纯账面)", "纯账面" -> "PHY";
+            case "ADJ", "实体贷款(还原剔转)", "还原剔转", "还原" -> "ADJ";
+            default -> "PHY";
+        };
+    }
+
+    public static String scopeDisplayName(String scopeKey) {
+        return switch (normalizeScope(scopeKey)) {
+            case "ADJ" -> "实体贷款（还原剔转）";
+            default -> "实体贷款（纯账面）";
+        };
+    }
 }

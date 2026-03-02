@@ -4,6 +4,7 @@
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <title>LoanTrendHub 多视角贷款日报分析台</title>
+    <link rel="icon" href="/favicon.ico">
     <script src="/js/echarts.min.js"></script>
     <style>
         :root{
@@ -152,8 +153,14 @@
                     <input id="heatDate" placeholder="yyyy-MM-dd" style="width:100%"/>
                 </div>
                 <div style="min-width:420px;flex:2">
-                    <label>热力图指标（metrics，支持多选：逗号分隔）</label>
-                    <input id="heatMetrics" placeholder="例如：BAL_TOTAL,CNT_TOTAL,DOD_BAL" style="width:100%"/>
+                    <label>热力图指标（metrics，多选）</label>
+                    <select id="heatMetricsSel" multiple size="6" style="width:100%;min-height:140px"></select>
+                    <input id="heatMetrics" placeholder="兼容：也可手输如 BAL_TOTAL,CNT_TOTAL,DOD_BAL" style="width:100%;margin-top:6px"/>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+                      <button class="btn" type="button" id="btnHeatPickDefault">常用3项</button>
+                      <button class="btn" type="button" id="btnHeatPickAll">全选</button>
+                      <button class="btn" type="button" id="btnHeatPickNone">清空</button>
+                    </div>
                 </div>
                 <button class="btn primary" id="btnHeat">刷新热力图</button>
             </div>
@@ -179,11 +186,13 @@
             <div class="row">
                 <div style="min-width:360px;flex:1">
                     <label>变化量指标（deltaMetric）</label>
-                    <input id="deltaMetric" placeholder="例如：DOD_BAL 或 DOD_CNT" style="width:100%"/>
+                    <select id="deltaSel" style="width:100%"></select>
+                    <input id="deltaMetric" placeholder="兼容：也可手输如 DOD_BAL" style="width:100%;margin-top:6px"/>
                 </div>
                 <div style="min-width:360px;flex:1">
                     <label>存量指标（baseMetric）</label>
-                    <input id="baseMetric" placeholder="例如：BAL_TOTAL 或 CNT_TOTAL" style="width:100%"/>
+                    <select id="baseSel" style="width:100%"></select>
+                    <input id="baseMetric" placeholder="兼容：也可手输如 BAL_TOTAL" style="width:100%;margin-top:6px"/>
                 </div>
                 <button class="btn primary" id="btnGrowth">刷新增长率</button>
             </div>
@@ -231,59 +240,39 @@
         return all.filter(x=> String(x).toLowerCase().includes(k));
     }
     function getSelectedValues(sel){
+        if(!sel) return [];
         return Array.from(sel.selectedOptions).map(o=>o.value);
     }
-    function activeTab(name){
-        document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===name));
-        document.querySelectorAll('.panel').forEach(p=>p.classList.add('hidden'));
-        $("panel-"+name).classList.remove('hidden');
-    }
 
-    const heatChart = echarts.init($('heatChart'));
-    const trendChart = echarts.init($('trendChart'));
-    const growthChart = echarts.init($('growthChart'));
+    function getMultiSelected(sel){
+  if(!sel) return [];
+  // <select multiple>
+  if(sel.tagName && sel.tagName.toLowerCase()==='select'){
+    return Array.from(sel.selectedOptions || [])
+      .map(o => (o.value||'').trim())
+      .filter(v => v);
+  }
+  // fallback: comma-separated text input
+  const val = (sel.value || '').trim();
+  if(!val) return [];
+  return val.split(',').map(s => s.trim()).filter(Boolean);
+}
 
-    function renderHeatmap(resp){
-        const metrics = resp.metrics || [];
-        const branches = resp.branches || [];
-        const data = (resp.data || []).map(d=>[d[0], d[1], d[2] == null ? null : Number(d[2])]);
-        heatChart.setOption({
-            title:{text:`热力图：${resp.scope||''}  ${resp.date||''}`, left:10, top:10, textStyle:{fontSize:14}},
-            tooltip:{position:'top', formatter:(p)=>{
-                    const m = metrics[p.data[0]]; const b = branches[p.data[1]];
-                    const v = p.data[2];
-                    return `${b}<br/>${m}: <b>${v==null?'-':v}</b>`;
-                }},
-            grid:{top:54, left:120, right:20, bottom:60},
-            xAxis:{type:'category', data: metrics, axisLabel:{rotate:25}},
-            yAxis:{type:'category', data: branches},
-            visualMap:{min: resp.min ?? 0, max: resp.max ?? 1, calculable:true, orient:'horizontal', left:'center', bottom:10},
-            series:[{type:'heatmap', data, label:{show:false}, emphasis:{itemStyle:{shadowBlur:10, shadowColor:'rgba(0,0,0,.18)'}}}]
-        }, true);
-    }
+function setMultiSelected(sel, values){
+  if(!sel) return;
+  const arr = Array.isArray(values) ? values : (values == null ? [] : [String(values)]);
+  if(sel.tagName && sel.tagName.toLowerCase()==='select'){
+    const set = new Set(arr.map(v => String(v)));
+    Array.from(sel.options || []).forEach(o => { o.selected = set.has(String(o.value)); });
+    sel.dispatchEvent(new Event('change'));
+    return;
+  }
+  if(typeof sel.value !== 'undefined'){
+    sel.value = arr.join(',');
+    sel.dispatchEvent(new Event('change'));
+  }
+}
 
-    function renderMultiLine(containerChart, title, x, seriesList, yUnit){
-        containerChart.setOption({
-            title:{text:title, left:10, top:10, textStyle:{fontSize:14}},
-            tooltip:{trigger:'axis'},
-            legend:{top:34, left:10},
-            grid:{top:80, left:60, right:20, bottom:50},
-            xAxis:{type:'category', data:x || []},
-            yAxis:{type:'value', name:yUnit||''},
-            dataZoom:[{type:'inside'},{type:'slider'}],
-            series:(seriesList||[]).map(s=>({
-                name:s.name, type:'line', smooth:true, showSymbol:false, data:s.y || []
-            }))
-        }, true);
-    }
-
-    let ALL_BRANCHES = [];
-    let SCOPE_OPTIONS = [];
-
-    function getScopeName(scopeKey){
-        const hit = SCOPE_OPTIONS.find(x=>x.key===scopeKey);
-        return hit ? hit.name : scopeKey;
-    }
     async function refreshMeta(){
         $('badgeStatus').textContent = '加载元数据…';
         try{
@@ -298,11 +287,17 @@
             }
 
             const scopes = await jget('/api/scopes');
-            SCOPE_OPTIONS = (scopes || []).map(item=>({ key:item?.key||'', name:item?.name||item?.key||'' })).filter(item=>item.key);
-            fillSelect($('scopeSel'), SCOPE_OPTIONS, item=>item.key, item=>item.name);
+            SCOPE_OPTIONS = (scopes || [])
+                .map(s => ({ key: (s?.key || ''), name: (s?.name || s?.key || '') }))
+                .filter(x => x.key);
+            fillSelect($('scopeSel'), SCOPE_OPTIONS, x=>x.key, x=>x.name);
 
             const metrics = await jget('/api/metrics');
-            fillSelect($('metricSel'), metrics, m=>m.metric, m=>`${m.name}（${m.metric}）`);
+            fillSelect($('metricSel'), metrics, m=>(m.metric ?? m.key), m=>`${(m.name ?? (m.metric ?? m.key))}（${(m.metric ?? m.key)}）`);
+            // also fill heatmap & growth metric selectors
+            fillSelect($('heatMetricsSel'), metrics, m=>(m.metric ?? m.key), m=>`${(m.name ?? (m.metric ?? m.key))}（${(m.metric ?? m.key)}）`);
+            fillSelect($('deltaSel'), metrics, m=>(m.metric ?? m.key), m=>`${(m.name ?? (m.metric ?? m.key))}（${(m.metric ?? m.key)}）`);
+            fillSelect($('baseSel'), metrics, m=>(m.metric ?? m.key), m=>`${(m.name ?? (m.metric ?? m.key))}（${(m.metric ?? m.key)}）`);
 
             const defaultScope = SCOPE_OPTIONS?.[0]?.key ?? '';
             const defaultMetric = metrics?.[0]?.metric ?? '';
@@ -315,6 +310,17 @@
             setBadge('badgeBranchCnt', ALL_BRANCHES.length);
 
             $('badgeStatus').textContent = '就绪';
+            // defaults (avoid empty UI)
+            if($('heatMetricsSel') && $('heatMetricsSel').options.length>0 && getMultiSelected($('heatMetricsSel')).length===0){
+                const common = Array.from($('heatMetricsSel').options).slice(0,3).map(o=>o.value);
+                setMultiSelected($('heatMetricsSel'), common);
+            }
+            if($('deltaSel') && $('deltaSel').options.length>0 && !$('deltaSel').value){
+                $('deltaSel').value = $('deltaSel').options[0].value;
+            }
+            if($('baseSel') && $('baseSel').options.length>0 && !$('baseSel').value){
+                $('baseSel').value = $('baseSel').options[0].value;
+            }
             log(`[OK] 元数据加载完成：scopes=${(scopes||[]).length} metrics=${(metrics||[]).length} branches=${ALL_BRANCHES.length}`);
         }catch(e){
             $('badgeStatus').textContent = '初始化失败';
@@ -366,7 +372,9 @@
         try{
             const scope = $('scopeSel').value || '';
             const date = $('heatDate').value || '';
-            const metrics = ($('heatMetrics').value || '').trim();
+            let metrics = ($('heatMetrics').value || '').trim();
+            const selVals = getMultiSelected($('heatMetricsSel'));
+            if(selVals.length) metrics = selVals.join(',');
             if(!date){ log('[WARN] 热力图日期不能为空'); return; }
             if(!metrics){ log('[WARN] 热力图指标不能为空'); return; }
             const url = `/api/heatmap?scope=${encodeURIComponent(scope)}&date=${encodeURIComponent(date)}&metrics=${encodeURIComponent(metrics)}`;
@@ -402,8 +410,12 @@
             const start = $('start').value || '';
             const end = $('end').value || '';
             const branches = getSelectedValues($('branchMulti')).join(',');
-            const deltaMetric = ($('deltaMetric').value || '').trim();
-            const baseMetric = ($('baseMetric').value || '').trim();
+            let deltaMetric = ($('deltaMetric').value || '').trim();
+            const ds = ($('deltaSel')?.value || '').trim();
+            if(ds) deltaMetric = ds;
+            let baseMetric = ($('baseMetric').value || '').trim();
+            const bs = ($('baseSel')?.value || '').trim();
+            if(bs) baseMetric = bs;
             if(!deltaMetric || !baseMetric){
                 log('[WARN] 增长率需要填写 变化量指标 与 存量指标');
                 return;
@@ -422,6 +434,9 @@
     $('btnUpload').addEventListener('click', doUpload);
     $('btnRefresh').addEventListener('click', refreshMeta);
     $('btnHeat').addEventListener('click', doHeat);
+    $('btnHeatPickAll')?.addEventListener('click', ()=>{ setMultiSelected($('heatMetricsSel'), Array.from($('heatMetricsSel')?.options||[]).map(o=>o.value)); });
+    $('btnHeatPickNone')?.addEventListener('click', ()=>{ setMultiSelected($('heatMetricsSel'), []); });
+    $('btnHeatPickDefault')?.addEventListener('click', ()=>{ const defaults=['BAL_TOTAL','CNT_TOTAL','DOD_BAL']; setMultiSelected($('heatMetricsSel'), defaults); $('heatMetrics').value = defaults.join(','); });
     $('btnTrend').addEventListener('click', doTrendMulti);
     $('btnGrowth').addEventListener('click', doGrowth);
 

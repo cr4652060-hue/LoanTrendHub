@@ -2,7 +2,6 @@ package com.example.loantrendhub.service;
 
 import com.example.loantrendhub.model.FactRow;
 import com.example.loantrendhub.repo.FactRepo;
-import com.example.loantrendhub.util.ScopeUtil;
 import com.example.loantrendhub.util.DateUtil;
 import com.example.loantrendhub.util.ExcelUtil.HeaderResolver;
 import org.apache.poi.ss.usermodel.*;
@@ -91,13 +90,13 @@ public class IngestService {
             Row row = sheet.getRow(r);
             if (row == null) continue;
 
-            String branch = formatter.formatCellValue(row.getCell(branchCol)).trim();
+            String branch = normalizeBranch(formatter.formatCellValue(row.getCell(branchCol)));
             if (branch.isBlank()) continue;
             if (branch.contains("各项贷款") || branch.contains("单位") || branch.contains("制表") || branch.contains("注")) continue;
 
             for (Map.Entry<Integer, String> e : metricByCol.entrySet()) {
                 int c = e.getKey();
-                String scope = ScopeUtil.normalize(scopeByCol.getOrDefault(c, "PHY"));
+                String scope = DateUtil.normalizeScope(scopeByCol.getOrDefault(c, "PHY"));
                 Double value = parseNumeric(row.getCell(c), formatter);
                 if (value == null) continue;
                 rows.add(new FactRow(bizDate, scope, branch, e.getValue(), value, sourceFile));
@@ -110,7 +109,21 @@ public class IngestService {
         return rows;
     }
 
-    private int detectHeaderDepth(Sheet sheet, DataFormatter formatter) {
+    
+    private String normalizeBranch(String raw){
+        if(raw==null) return "";
+        String b = raw.trim();
+        // drop common suffixes / noise
+        b = b.replaceAll("\\s+",""); // remove internal spaces
+        b = b.replace("网点",""); // avoid accidental headers
+        // unify: 汉街分理处 -> 汉街 ; 库沟支行 -> 库沟
+        b = b.replaceAll("(分理处|支行|营业部)$", "");
+        // cleanup duplicated punctuation
+        b = b.replaceAll("[\\u3000\\s]+", "");
+        return b;
+    }
+
+private int detectHeaderDepth(Sheet sheet, DataFormatter formatter) {
         int max = Math.min(12, sheet.getLastRowNum());
         int depth = 5; // 默认：0..5 作为表头（你这类日报表基本够）
         for (int r = 0; r <= max; r++) {
@@ -140,7 +153,7 @@ public class IngestService {
             if (row == null) continue;
             for (int c = 0; c < Math.max(maxCol, row.getLastCellNum()); c++) {
                 String t = formatter.formatCellValue(row.getCell(c)).trim();
-                if ("单位".equals(t) || "网点".equals(t) || t.contains("单位")) return c;
+                if ("网点".equals(t) || t.contains("单位")) return c;
             }
         }
         // 2) 采样 dataStart..dataStart+10：哪个列更像“网点名”就用哪个
@@ -170,8 +183,9 @@ public class IngestService {
     }
 
     private boolean looksLikeBranch(String s) {
-        // 你的网点名一般包含：支行/分理处/营业部/信用社 等
-        return s.contains("支行") || s.contains("分理处") || s.contains("营业部") || s.contains("信用社") || s.length() >= 2;
+        // 网点名一般包含：支行/分理处/营业部/信用社 等
+        if (s.length() < 2) return false;
+        return s.contains("支行") || s.contains("分理处") || s.contains("营业部") || s.contains("信用社") || !s.matches(".*\\d.*");
     }
 
     private String rowToText(Row row, DataFormatter formatter) {
@@ -210,9 +224,8 @@ public class IngestService {
         if (raw == null || raw.isBlank()) return null;
         String s = raw.replace(",", "").replace("%", "").trim();
         try {
-            double v = Double.parseDouble(s);
-            // 注意：你 schema 里 GR_* 的单位是 %，前端也按 % 画；这里不除以100，保持“3.98 => 3.98”
-            return v;
+            // 注意：schema 里 GR_* 的单位是 %，前端也按 % 画；这里不除以100，保持“3.98 => 3.98”
+            return Double.parseDouble(s);
         } catch (NumberFormatException ex) {
             return null;
         }
