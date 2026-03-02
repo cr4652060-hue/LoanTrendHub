@@ -16,6 +16,8 @@ public class FactRepo {
             "WHEN scope IN ('PHY','实体贷款','实体贷款（纯账面）','实体贷款(纯账面)','纯账面') THEN 'PHY' " +
             "WHEN scope IN ('ADJ','实体贷款（还原剔转）','实体贷款(还原剔转)','还原剔转','还原') THEN 'ADJ' " +
             "ELSE scope END";
+    private static final String NORMALIZED_BRANCH_SQL =
+            "TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(branch, char(10), ''), char(13), ''), ' ', ''), '　', ''), '：', ''), ':', ''), '。', ''), '.', ''), '．', ''), char(9), ''), '分理处', ''))";
     private final JdbcTemplate jdbcTemplate;
 
     public FactRepo(JdbcTemplate jdbcTemplate) {
@@ -66,7 +68,9 @@ public class FactRepo {
     }
 
     public List<String> findBranches(String scope) {
-        String sql = "SELECT DISTINCT branch FROM fact_trend WHERE " + NORMALIZED_SCOPE_SQL + " = ? ORDER BY branch";
+        String sql = "SELECT DISTINCT " + NORMALIZED_BRANCH_SQL + " AS branch FROM fact_trend " +
+                "WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND " + NORMALIZED_BRANCH_SQL + " <> '' " +
+                "AND " + NORMALIZED_BRANCH_SQL + " NOT LIKE '%合计%' ORDER BY branch";
         return jdbcTemplate.queryForList(sql, String.class, scope);
     }
 
@@ -83,7 +87,7 @@ public class FactRepo {
         args.add(date);
         args.add(scope);
         args.addAll(metrics);
-        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, branch, metric, value, source_file FROM fact_trend " +
+        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, " + NORMALIZED_BRANCH_SQL + " AS branch, metric, value, source_file FROM fact_trend " +
                 "WHERE biz_date=? AND " + NORMALIZED_SCOPE_SQL + " = ? AND metric IN (" + placeholders + ")";
         return jdbcTemplate.query(sql, this::mapFactRow, args.toArray());
     }
@@ -97,8 +101,8 @@ public class FactRepo {
         args.add(start);
         args.add(end);
         args.addAll(branches);
-        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, branch, metric, value, source_file FROM fact_trend " +
-                "WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND metric=? AND biz_date BETWEEN ? AND ? AND branch IN (" + placeholders + ") " +
+        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, " + NORMALIZED_BRANCH_SQL + " AS branch, metric, value, source_file FROM fact_trend " +
+                "WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND metric=? AND biz_date BETWEEN ? AND ? AND " + NORMALIZED_BRANCH_SQL + " IN (" + placeholders + ") " +
                 "ORDER BY biz_date, branch";
         return jdbcTemplate.query(sql, this::mapFactRow, args.toArray());
     }
@@ -112,15 +116,15 @@ public class FactRepo {
         args.add(start);
         args.add(end);
         args.addAll(metrics);
-        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, branch, metric, value, source_file FROM fact_trend " +
-                "WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND branch=? AND biz_date BETWEEN ? AND ? AND metric IN (" + placeholders + ") " +
+        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, " + NORMALIZED_BRANCH_SQL + " AS branch, metric, value, source_file FROM fact_trend " +
+                "WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND " + NORMALIZED_BRANCH_SQL + "=? AND biz_date BETWEEN ? AND ? AND metric IN (" + placeholders + ") " +
                 "ORDER BY biz_date, metric";
         return jdbcTemplate.query(sql, this::mapFactRow, args.toArray());
     }
 
     public List<FactRow> findSeries(String scope, String branch, String metric, String start, String end) {
-        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, branch, metric, value, source_file FROM fact_trend " +
-                "WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND branch=? AND metric=? AND biz_date BETWEEN ? AND ? ORDER BY biz_date";
+        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, " + NORMALIZED_BRANCH_SQL + " AS branch, metric, value, source_file FROM fact_trend " +
+                "WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND " + NORMALIZED_BRANCH_SQL + "=? AND metric=? AND biz_date BETWEEN ? AND ? ORDER BY biz_date";
         return jdbcTemplate.query(sql, this::mapFactRow, scope, branch, metric, start, end);
     }
 
