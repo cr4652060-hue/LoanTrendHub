@@ -196,7 +196,8 @@
                 </div>
                 <button class="btn primary" id="btnGrowth">刷新增长率</button>
             </div>
-            <div class="help">若上期存量=0 会导致分母为0，建议后端对分母做保护避免误导。</div>
+<!--            <div class="help">若上期存量=0 会导致分母为0，建议后端对分母做保护避免误导。</div>-->
+
             <div id="growthChart" class="chart"></div>
         </div>
     </div>
@@ -275,6 +276,7 @@ function setMultiSelected(sel, values){
 
     let SCOPE_OPTIONS = [];
     let ALL_BRANCHES = [];
+    let METRIC_OPTIONS = [];
     const heatChart = echarts.init($('heatChart'));
     const trendChart = echarts.init($('trendChart'));
     const growthChart = echarts.init($('growthChart'));
@@ -289,6 +291,25 @@ function setMultiSelected(sel, values){
     function getScopeName(scopeKey){
         const hit = (SCOPE_OPTIONS || []).find(x => String(x.key) === String(scopeKey));
         return hit?.name || scopeKey || '';
+    }
+    function findMetricDef(metric){
+        return (METRIC_OPTIONS || []).find(m => String(m.metric || m.key) === String(metric));
+    }
+
+    function pickGrowthDefaults(){
+        const currentDelta = ($('deltaSel')?.value || $('deltaMetric')?.value || '').trim();
+        const def = findMetricDef(currentDelta);
+        if(def?.baseMetric){
+            $('baseSel').value = def.baseMetric;
+            $('baseMetric').value = def.baseMetric;
+            return;
+        }
+        const fallback = (METRIC_OPTIONS || []).find(m => String(m.kind).toUpperCase() === 'LEVEL');
+        if(fallback){
+            const m = fallback.metric || fallback.key || '';
+            $('baseSel').value = m;
+            $('baseMetric').value = m;
+        }
     }
 
     function activeTab(name){
@@ -440,14 +461,23 @@ function setMultiSelected(sel, values){
             fillSelect($('scopeSel'), SCOPE_OPTIONS, x=>x.key, x=>x.name);
 
             const metrics = await jget('/api/metrics');
-            fillSelect($('metricSel'), metrics, m=>(m.metric ?? m.key), m=>`${(m.name ?? (m.metric ?? m.key))}（${(m.metric ?? m.key)}）`);
+            METRIC_OPTIONS = metrics || [];
+            const metricLabel = (m) => {
+                const code = (m.metric ?? m.key);
+                const kind = String(m.kind || '').toUpperCase();
+                const kindTip = kind === 'DELTA' ? '变化量' : (kind === 'LEVEL' ? '存量' : (kind === 'RATE' ? '比例' : ''));
+                return `${(m.name ?? code)}（${code}${kindTip ? ' / ' + kindTip : ''}）`;
+            };
+            fillSelect($('metricSel'), METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
             // also fill heatmap & growth metric selectors
-            fillSelect($('heatMetricsSel'), metrics, m=>(m.metric ?? m.key), m=>`${(m.name ?? (m.metric ?? m.key))}（${(m.metric ?? m.key)}）`);
-            fillSelect($('deltaSel'), metrics, m=>(m.metric ?? m.key), m=>`${(m.name ?? (m.metric ?? m.key))}（${(m.metric ?? m.key)}）`);
-            fillSelect($('baseSel'), metrics, m=>(m.metric ?? m.key), m=>`${(m.name ?? (m.metric ?? m.key))}（${(m.metric ?? m.key)}）`);
+            fillSelect($('heatMetricsSel'), METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
+            const deltaMetrics = METRIC_OPTIONS.filter(m => ['DELTA','LEVEL'].includes(String(m.kind || '').toUpperCase()));
+            const baseMetrics = METRIC_OPTIONS.filter(m => String(m.kind || '').toUpperCase() === 'LEVEL');
+            fillSelect($('deltaSel'), deltaMetrics.length ? deltaMetrics : METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
+            fillSelect($('baseSel'), baseMetrics.length ? baseMetrics : METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
 
             const defaultScope = SCOPE_OPTIONS?.[0]?.key ?? '';
-            const defaultMetric = metrics?.[0]?.metric ?? '';
+            const defaultMetric = METRIC_OPTIONS?.[0]?.metric ?? METRIC_OPTIONS?.[0]?.key ?? '';
             $('scopeSel').value = defaultScope;
             $('metricSel').value = defaultMetric;
             setBadge('badgeScope', getScopeName(defaultScope) || '-');
@@ -467,7 +497,9 @@ function setMultiSelected(sel, values){
             }
             if($('baseSel') && $('baseSel').options.length>0 && !$('baseSel').value){
                 $('baseSel').value = $('baseSel').options[0].value;
+                $('deltaMetric').value = $('deltaSel').value;
             }
+            pickGrowthDefaults();
             log(`[OK] 元数据加载完成：scopes=${(scopes||[]).length} metrics=${(metrics||[]).length} branches=${ALL_BRANCHES.length}`);
         }catch(e){
             $('badgeStatus').textContent = '初始化失败';
@@ -606,7 +638,13 @@ function setMultiSelected(sel, values){
     $('btnSelectAll').addEventListener('click', ()=> Array.from($('branchMulti').options).forEach(o=>o.selected=true));
     $('btnClear').addEventListener('click', ()=> Array.from($('branchMulti').options).forEach(o=>o.selected=false));
     window.addEventListener('resize', ()=>{ heatChart.resize(); trendChart.resize(); growthChart.resize(); });
-
+    $('deltaSel')?.addEventListener('change', ()=>{
+        $('deltaMetric').value = $('deltaSel').value || '';
+        pickGrowthDefaults();
+    });
+    $('baseSel')?.addEventListener('change', ()=>{
+        $('baseMetric').value = $('baseSel').value || '';
+    });
     refreshMeta();
 </script>
 </body>

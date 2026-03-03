@@ -39,7 +39,9 @@ public List<Map<String, Object>> metrics() {
             .map(m -> Map.<String, Object>of(
                     "key", m.metric(),
                     "name", m.name(),
-                    "unit", m.unit()
+                    "unit", m.unit(),
+                    "kind", m.kind() == null ? "" : m.kind(),
+                    "baseMetric", m.baseMetric() == null ? "" : m.baseMetric()
             ))
             .toList();
 }

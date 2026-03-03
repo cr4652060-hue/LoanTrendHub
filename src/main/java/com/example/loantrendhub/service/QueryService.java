@@ -110,7 +110,10 @@ public class QueryService {
     private SeriesResponse seriesByBranches(String scope, String metric, List<String> branches, String start, String end) {
         List<String> dates = factRepo.findDates(scope, start, end);
         List<FactRow> rows = factRepo.findSeriesByMetric(scope, metric, branches, start, end);
-
+        MetricDef md = metricService.metricMap().get(metric);
+        if (rows.isEmpty() && md != null && "DELTA".equalsIgnoreCase(md.kind()) && md.baseMetric() != null && !md.baseMetric().isBlank()) {
+            rows = buildDeltaRowsFromBase(scope, branches, dates, metric, md.baseMetric(), start, end);
+        }
         Map<String, Map<String, Double>> byBranch = new LinkedHashMap<>();
         for (String b : branches) byBranch.put(b, new HashMap<>());
         for (FactRow r : rows) {
@@ -125,9 +128,37 @@ public class QueryService {
             series.add(new SeriesResponse.Series(b, y));
         }
 
-        MetricDef md = metricService.metricMap().get(metric);
         String unit = md == null ? "" : md.unit();
         return new SeriesResponse("趋势：" + scope + " / " + (md == null ? metric : md.name()), unit, dates, series);
+    }
+    private List<FactRow> buildDeltaRowsFromBase(String scope,
+                                                 List<String> branches,
+                                                 List<String> dates,
+                                                 String deltaMetric,
+                                                 String baseMetric,
+                                                 String start,
+                                                 String end) {
+        if (branches == null || branches.isEmpty() || dates == null || dates.isEmpty()) return List.of();
+        List<FactRow> baseRows = factRepo.findSeriesByMetric(scope, baseMetric, branches, start, end);
+        Map<String, Map<String, Double>> byBranch = new HashMap<>();
+        for (FactRow row : baseRows) {
+            if (row.value() == null) continue;
+            byBranch.computeIfAbsent(row.branch(), k -> new HashMap<>()).put(row.bizDate(), row.value());
+        }
+
+        List<FactRow> deltaRows = new ArrayList<>();
+        for (String branch : branches) {
+            Map<String, Double> values = byBranch.getOrDefault(branch, Map.of());
+            for (int i = 1; i < dates.size(); i++) {
+                String currDate = dates.get(i);
+                String prevDate = dates.get(i - 1);
+                Double curr = values.get(currDate);
+                Double prev = values.get(prevDate);
+                if (curr == null || prev == null) continue;
+                deltaRows.add(new FactRow(currDate, scope, branch, deltaMetric, curr - prev, "AUTO_COMPUTED_DELTA"));
+            }
+        }
+        return deltaRows;
     }
 
     private SeriesResponse seriesByMetrics(String scope, String branch, List<String> metrics, String start, String end) {
@@ -170,7 +201,10 @@ public class QueryService {
         // 拉取两条指标的明细（同一时间窗口）
         List<FactRow> deltaRows = factRepo.findSeriesByMetric(scope, deltaMetric, branches, start, end);
         List<FactRow> baseRows  = factRepo.findSeriesByMetric(scope, baseMetric,  branches, start, end);
-
+        MetricDef deltaDef = metricService.metricMap().get(deltaMetric);
+        if (deltaRows.isEmpty() && deltaDef != null && "DELTA".equalsIgnoreCase(deltaDef.kind()) && deltaDef.baseMetric() != null && !deltaDef.baseMetric().isBlank()) {
+            deltaRows = buildDeltaRowsFromBase(scope, branches, dates, deltaMetric, deltaDef.baseMetric(), start, end);
+        }
         Map<String, Map<String, Double>> delta = new HashMap<>();
         for (FactRow r : deltaRows) {
             if (r.value() == null) continue;
