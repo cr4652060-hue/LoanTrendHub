@@ -52,14 +52,14 @@ public class QueryService {
     public HeatmapResponse heatmap(String scope, String date, List<String> metrics) {
         scope = DateUtil.normalizeScope(scope);
         List<String> branches = branches(scope);
-
+        Map<String, MetricDef> defs = metricService.metricMap();
         Map<String, Integer> metricIdx = new HashMap<>();
         for (int i = 0; i < metrics.size(); i++) metricIdx.put(metrics.get(i), i);
 
         Map<String, Integer> branchIdx = new HashMap<>();
         for (int i = 0; i < branches.size(); i++) branchIdx.put(branches.get(i), i);
 
-        List<FactRow> rows = factRepo.findByDateScopeMetrics(date, scope, metrics);
+        List<FactRow> rows = enrichHeatmapRows(scope, date, metrics, branches, defs);
         List<List<Object>> data = new ArrayList<>();
         Double min = null, max = null;
 
@@ -77,7 +77,6 @@ public class QueryService {
         if (min == null) min = 0d;
         if (max == null) max = 1d;
 
-        Map<String, MetricDef> defs = metricService.metricMap();
         Map<String, HeatmapResponse.MetricMeta> metricDefs = metrics.stream().collect(Collectors.toMap(
                 m -> m,
                 m -> {
@@ -88,7 +87,43 @@ public class QueryService {
 
         return new HeatmapResponse(date, scope, metrics, branches, min, max, data, metricDefs);
     }
+    private List<FactRow> enrichHeatmapRows(String scope,
+                                            String date,
+                                            List<String> metrics,
+                                            List<String> branches,
+                                            Map<String, MetricDef> defs) {
+        List<FactRow> sourceRows = factRepo.findByDateScopeMetrics(date, scope, metrics);
+        Map<String, FactRow> merged = new LinkedHashMap<>();
+        for (FactRow row : sourceRows) {
+            merged.put(row.metric() + "#" + row.branch(), row);
+        }
 
+        List<String> datesUntilTarget = factRepo.findDates(scope, "1900-01-01", date);
+        if (!datesUntilTarget.contains(date)) {
+            return new ArrayList<>(merged.values());
+        }
+        String start = datesUntilTarget.isEmpty() ? date : datesUntilTarget.get(0);
+
+        for (String metric : metrics) {
+            MetricDef def = defs.get(metric);
+            if (def == null || def.baseMetric() == null || def.baseMetric().isBlank()) continue;
+
+            List<FactRow> computedRows;
+            if ("DELTA".equalsIgnoreCase(def.kind())) {
+                computedRows = buildDeltaRowsFromBase(scope, branches, datesUntilTarget, metric, def.baseMetric(), start, date);
+            } else if ("RATE".equalsIgnoreCase(def.kind())) {
+                computedRows = buildRateRowsFromBase(scope, branches, datesUntilTarget, metric, def.baseMetric(), start, date);
+            } else {
+                continue;
+            }
+
+            for (FactRow row : computedRows) {
+                if (!date.equals(row.bizDate()) || row.value() == null) continue;
+                merged.putIfAbsent(row.metric() + "#" + row.branch(), row);
+            }
+        }
+        return new ArrayList<>(merged.values());
+    }
     /** 统一：同指标多网点 或 同网点多指标 */
     public SeriesResponse multiTrend(String scope,
                                      String metric,
