@@ -58,4 +58,8 @@ public class MetaController {
                 ))
                 .toList();
     }
+    @GetMapping("/meta")
+    public Map<String, Object> meta() {
+        return queryService.meta();
+    }
 }

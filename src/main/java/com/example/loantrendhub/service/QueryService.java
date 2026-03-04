@@ -31,8 +31,16 @@ public class QueryService {
         this.metricService = metricService;
     }
 
-    public Map<String, String> dateRange() {
-        return factRepo.dateRange();
+    public Map<String, Object> dateRange() {
+        Map<String, String> raw = factRepo.dateRange();
+        String min = raw.getOrDefault("min", "");
+        String max = raw.getOrDefault("max", "");
+        boolean hasData = min != null && !min.isBlank() && max != null && !max.isBlank();
+        return Map.of(
+                "min", hasData ? min : "",
+                "max", hasData ? max : "",
+                "hasData", hasData
+        );
     }
 
     public List<String> scopes() { return factRepo.findScopes(); }
@@ -51,7 +59,26 @@ public class QueryService {
     }
 
     public List<MetricDef> metrics() { return metricService.listMetrics(); }
+    public Map<String, Object> meta() {
+        List<String> scopes = scopes();
+        if (scopes.isEmpty()) {
+            scopes = List.of("PHY", "ADJ");
+        }
 
+        List<String> cleanedBranches = factRepo.findAllBranches().stream()
+                .map(QueryService::normalizeBranch)
+                .filter(s -> s != null && !s.isBlank())
+                .distinct()
+                .sorted()
+                .toList();
+
+        return Map.of(
+                "scopes", scopes,
+                "metrics", metrics(),
+                "branches", cleanedBranches,
+                "dateRange", dateRange()
+        );
+    }
     public HeatmapResponse heatmap(String scope, String date, List<String> metrics) {
         scope = DateUtil.normalizeScope(scope);
         List<String> branches = branches(scope);

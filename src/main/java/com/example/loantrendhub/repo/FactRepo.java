@@ -55,7 +55,7 @@ public class FactRepo {
     }
     /** 数据库已有数据的日期范围（用于前端默认带出） */
     public Map<String, String> dateRange() {
-        String sql = "SELECT MIN(biz_date) AS min_date, MAX(biz_date) AS max_date FROM fact_trend";
+        String sql = "SELECT MIN(biz_date) AS min_date, MAX(biz_date) AS max_date FROM fact_metric_daily";
         return jdbcTemplate.query(sql, rs -> {
             String min = "";
             String max = "";
@@ -69,7 +69,7 @@ public class FactRepo {
         });
     }
     public List<String> findScopes() {
-        String sql = "SELECT DISTINCT " + NORMALIZED_SCOPE_SQL + " AS normalized_scope FROM fact_trend ORDER BY normalized_scope";
+        String sql = "SELECT DISTINCT " + NORMALIZED_SCOPE_SQL + " AS normalized_scope FROM fact_metric_daily ORDER BY normalized_scope";
         return jdbcTemplate.queryForList(sql, String.class);
     }
 
@@ -81,48 +81,51 @@ public class FactRepo {
         }
 
         Integer rowsByScope = jdbcTemplate.queryForObject(
-                "SELECT COUNT(1) FROM fact_trend WHERE " + NORMALIZED_SCOPE_SQL + " = ?",
+                "SELECT COUNT(1) FROM fact_metric_daily WHERE " + NORMALIZED_SCOPE_SQL + " = ?",
                 Integer.class,
                 normalized
         );
         Integer blankBranchRows = jdbcTemplate.queryForObject(
-                "SELECT COUNT(1) FROM fact_trend WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND TRIM(COALESCE(branch,'')) = ''",
+                "SELECT COUNT(1) FROM fact_metric_daily WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND TRIM(COALESCE(branch,'')) = ''",
                 Integer.class,
                 normalized
         );
         Integer distinctRawBranch = jdbcTemplate.queryForObject(
-                "SELECT COUNT(DISTINCT branch) FROM fact_trend WHERE " + NORMALIZED_SCOPE_SQL + " = ?",
+                "SELECT COUNT(DISTINCT branch) FROM fact_metric_daily WHERE " + NORMALIZED_SCOPE_SQL + " = ?",
                 Integer.class,
                 normalized
         );
         Integer distinctNormalizedBranch = jdbcTemplate.queryForObject(
-                "SELECT COUNT(DISTINCT " + NORMALIZED_BRANCH_SQL + ") FROM fact_trend WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND " + NORMALIZED_BRANCH_SQL + " <> ''",
+                "SELECT COUNT(DISTINCT " + NORMALIZED_BRANCH_SQL + ") FROM fact_metric_daily WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND " + NORMALIZED_BRANCH_SQL + " <> ''",
                 Integer.class,
                 normalized
         );
 
-        List<String> tableColumns = jdbcTemplate.query("PRAGMA table_info(fact_trend)", (rs, rowNum) -> rs.getString("name"));
 
         result.put("scope", normalized);
         result.put("rowsByScope", rowsByScope == null ? 0 : rowsByScope);
         result.put("blankBranchRows", blankBranchRows == null ? 0 : blankBranchRows);
         result.put("distinctRawBranch", distinctRawBranch == null ? 0 : distinctRawBranch);
         result.put("distinctNormalizedBranch", distinctNormalizedBranch == null ? 0 : distinctNormalizedBranch);
-        result.put("columns", tableColumns);
-        result.put("hasBranch", tableColumns.contains("branch"));
-        result.put("hasBranchName", tableColumns.contains("branch_name"));
-        result.put("hasOrgName", tableColumns.contains("org_name"));
+        result.put("hasBranch", true);
+        result.put("hasBranchName", false);
+        result.put("hasOrgName", false);
         return result;
     }
     public List<String> findBranches(String scope) {
-        String sql = "SELECT DISTINCT " + NORMALIZED_BRANCH_SQL + " AS branch FROM fact_trend " +
+        String sql = "SELECT DISTINCT " + NORMALIZED_BRANCH_SQL + " AS branch FROM fact_metric_daily " +
                 "WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND " + NORMALIZED_BRANCH_SQL + " <> '' " +
                 "AND " + NORMALIZED_BRANCH_SQL + " NOT LIKE '%合计%' ORDER BY branch";
         return jdbcTemplate.queryForList(sql, String.class, scope);
     }
+    public List<String> findAllBranches() {
+        String sql = "SELECT DISTINCT " + NORMALIZED_BRANCH_SQL + " AS branch FROM fact_metric_daily " +
+                "WHERE " + NORMALIZED_BRANCH_SQL + " <> '' AND " + NORMALIZED_BRANCH_SQL + " NOT LIKE '%合计%' ORDER BY branch";
+        return jdbcTemplate.queryForList(sql, String.class);
+    }
 
     public List<String> findDates(String scope, String start, String end) {
-        String sql = "SELECT DISTINCT biz_date FROM fact_trend WHERE " + NORMALIZED_SCOPE_SQL + " = ? " +
+        String sql = "SELECT DISTINCT biz_date FROM fact_metric_daily WHERE " + NORMALIZED_SCOPE_SQL + " = ? " +
                 "AND biz_date BETWEEN ? AND ? ORDER BY biz_date";
         return jdbcTemplate.queryForList(sql, String.class, scope, start, end);
     }
@@ -134,7 +137,7 @@ public class FactRepo {
         args.add(date);
         args.add(scope);
         args.addAll(metrics);
-        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, " + NORMALIZED_BRANCH_SQL + " AS branch, metric, value, source_file FROM fact_trend " +
+        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, " + NORMALIZED_BRANCH_SQL + " AS branch, metric, val AS value, source_file FROM fact_metric_daily " +
                 "WHERE biz_date=? AND " + NORMALIZED_SCOPE_SQL + " = ? AND metric IN (" + placeholders + ")";
         return jdbcTemplate.query(sql, this::mapFactRow, args.toArray());
     }
@@ -148,7 +151,7 @@ public class FactRepo {
         args.add(start);
         args.add(end);
         args.addAll(branches);
-        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, " + NORMALIZED_BRANCH_SQL + " AS branch, metric, value, source_file FROM fact_trend " +
+        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, " + NORMALIZED_BRANCH_SQL + " AS branch, metric, val AS value, source_file FROM fact_metric_daily " +
                 "WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND metric=? AND biz_date BETWEEN ? AND ? AND " + NORMALIZED_BRANCH_SQL + " IN (" + placeholders + ") " +
                 "ORDER BY biz_date, branch";
         return jdbcTemplate.query(sql, this::mapFactRow, args.toArray());
@@ -163,14 +166,14 @@ public class FactRepo {
         args.add(start);
         args.add(end);
         args.addAll(metrics);
-        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, " + NORMALIZED_BRANCH_SQL + " AS branch, metric, value, source_file FROM fact_trend " +
+        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, " + NORMALIZED_BRANCH_SQL + " AS branch, metric, val AS value, source_file FROM fact_metric_daily " +
                 "WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND " + NORMALIZED_BRANCH_SQL + "=? AND biz_date BETWEEN ? AND ? AND metric IN (" + placeholders + ") " +
                 "ORDER BY biz_date, metric";
         return jdbcTemplate.query(sql, this::mapFactRow, args.toArray());
     }
 
     public List<FactRow> findSeries(String scope, String branch, String metric, String start, String end) {
-        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, " + NORMALIZED_BRANCH_SQL + " AS branch, metric, value, source_file FROM fact_trend " +
+        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, " + NORMALIZED_BRANCH_SQL + " AS branch, metric, val AS value, source_file FROM fact_metric_daily " +
                 "WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND " + NORMALIZED_BRANCH_SQL + "=? AND metric=? AND biz_date BETWEEN ? AND ? ORDER BY biz_date";
         return jdbcTemplate.query(sql, this::mapFactRow, scope, branch, metric, start, end);
     }

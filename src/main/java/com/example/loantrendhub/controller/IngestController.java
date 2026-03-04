@@ -1,6 +1,6 @@
 package com.example.loantrendhub.controller;
 
-import com.example.loantrendhub.service.IngestService;
+import com.example.loantrendhub.service.ImportJobService;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -11,14 +11,19 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api")
 public class IngestController {
-    private final IngestService ingestService;
+    private final ImportJobService importJobService;
 
-    public IngestController(IngestService ingestService) {
-        this.ingestService = ingestService;
+    public IngestController(ImportJobService importJobService) {
+        this.importJobService = importJobService;
     }
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Map<String, Object> upload(@RequestPart(name = "files") List<MultipartFile> files) throws Exception {
-        return ingestService.ingest(files);
+        return importJobService.submit(files);
+    }
+
+    @GetMapping("/job/{jobId}")
+    public Map<String, Object> job(@PathVariable("jobId") String jobId) {
+        return importJobService.get(jobId);
     }
 }

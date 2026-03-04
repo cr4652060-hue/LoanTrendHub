@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
+import java.nio.file.Files;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -25,17 +26,29 @@ public class IngestService {
     }
 
     public Map<String, Object> ingest(List<MultipartFile> files) throws Exception {
+        List<ImportJobService.StoredUpload> stored = new ArrayList<>();
+        for (MultipartFile file : files) {
+            if (file == null || file.isEmpty()) {
+                continue;
+            }
+            String source = file.getOriginalFilename() == null ? "unknown.xlsx" : file.getOriginalFilename();
+            java.nio.file.Path temp = Files.createTempFile("loantrend-upload-", ".xlsx");
+            file.transferTo(temp);
+            stored.add(new ImportJobService.StoredUpload(source, temp));
+        }
+        return ingestStored(stored);
+    }
+
+    public Map<String, Object> ingestStored(List<ImportJobService.StoredUpload> files) throws Exception {
         List<FactRow> all = new ArrayList<>();
         List<String> accepted = new ArrayList<>();
         List<String> messages = new ArrayList<>();
 
-        for (MultipartFile file : files) {
-            if (file == null || file.isEmpty()) continue;
-
-            String source = file.getOriginalFilename() == null ? "unknown.xlsx" : file.getOriginalFilename();
+        for (ImportJobService.StoredUpload file : files) {
+            String source = file.sourceName();
             String bizDate = extractBizDate(source);
 
-            try (InputStream in = file.getInputStream(); Workbook wb = WorkbookFactory.create(in)) {
+            try (InputStream in = Files.newInputStream(file.path()); Workbook wb = WorkbookFactory.create(in)) {
                 Sheet sheet = wb.getSheetAt(0);
                 if (bizDate == null) bizDate = extractBizDateFromSheet(sheet);
                 if (bizDate == null) {

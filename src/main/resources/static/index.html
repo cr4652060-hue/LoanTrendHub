@@ -444,23 +444,28 @@ function setMultiSelected(sel, values){
     async function refreshMeta(){
         $('badgeStatus').textContent = '加载元数据…';
         try{
-            const dr = await jget('/api/dateRange');
-            if(dr && dr.min && dr.max){
+            const meta = await jget('/api/meta');
+            const dr = meta?.dateRange || {};
+            if(dr && dr.hasData && dr.min && dr.max){
                 setBadge('badgeRange', `${dr.min} ~ ${dr.max}`);
                 $('start').value = dr.min;
                 $('end').value = dr.max;
                 $('heatDate').value = dr.max;
             } else {
                 setBadge('badgeRange', '-');
+                log('[INFO] 当前暂无数据，请先批量导入 Excel');
             }
 
-            const scopes = await jget('/api/scopes');
+            const scopes = (meta?.scopes || []).map(s => ({
+                key: s,
+                name: s === 'ADJ' ? '实体贷款（还原剔转）' : '实体贷款（纯账面）'
+            }));
             SCOPE_OPTIONS = (scopes || [])
                 .map(s => ({ key: (s?.key || ''), name: (s?.name || s?.key || '') }))
                 .filter(x => x.key);
             fillSelect($('scopeSel'), SCOPE_OPTIONS, x=>x.key, x=>x.name);
 
-            const metrics = await jget('/api/metrics');
+            const metrics = meta?.metrics || [];
             METRIC_OPTIONS = metrics || [];
             const metricLabel = (m) => {
                 const code = (m.metric ?? m.key);
@@ -477,19 +482,13 @@ function setMultiSelected(sel, values){
             fillSelect($('baseSel'), baseMetrics.length ? baseMetrics : METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
 
             let defaultScope = SCOPE_OPTIONS?.[0]?.key ?? 'PHY';
-            for (const opt of (SCOPE_OPTIONS || [])) {
-                const branchProbe = normalizeBranchOptions(await jget('/api/branches?scope=' + encodeURIComponent(opt.key)));
-                if (branchProbe.length > 0) {
-                    defaultScope = opt.key;
-                    break;
-                }
-            }
+
             const defaultMetric = METRIC_OPTIONS?.[0]?.metric ?? METRIC_OPTIONS?.[0]?.key ?? '';
             $('scopeSel').value = defaultScope;
             $('metricSel').value = defaultMetric;
             setBadge('badgeScope', getScopeName(defaultScope) || '-');
 
-            ALL_BRANCHES = normalizeBranchOptions(await jget('/api/branches?scope=' + encodeURIComponent(defaultScope)));
+            ALL_BRANCHES = normalizeBranchOptions(meta?.branches || []);
             renderBranchList();
             setBadge('badgeBranchCnt', ALL_BRANCHES.length);
 
@@ -530,7 +529,13 @@ function setMultiSelected(sel, values){
         });
         setBadge('badgeBranchCnt', ALL_BRANCHES.length);
     }
-
+    async function waitJob(jobId){
+        while(true){
+            const job = await jget('/api/job/' + encodeURIComponent(jobId));
+            if(job.status === 'SUCCESS' || job.status === 'FAILED' || job.status === 'NOT_FOUND') return job;
+            await new Promise(r => setTimeout(r, 1200));
+        }
+    }
     async function doUpload(){
         const files = $('fileInput').files;
         if(!files || files.length===0){
@@ -544,7 +549,9 @@ function setMultiSelected(sel, values){
         try{
             log(`[INFO] 开始上传：${files.length} 个文件…`);
             const res = await jpost('/api/upload', fd);
-            log('[OK] 导入完成：' + JSON.stringify(res));
+            log('[INFO] 导入任务已提交：jobId=' + res.jobId);
+            const done = await waitJob(res.jobId);
+            log('[OK] 导入完成：' + JSON.stringify(done));
             await refreshMeta();
         }catch(e){
             log('[ERR] 导入失败：' + e.message);
