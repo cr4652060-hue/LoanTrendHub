@@ -6,7 +6,10 @@ import com.example.loantrendhub.util.DateUtil;
 import com.example.loantrendhub.util.ExcelUtil.HeaderResolver;
 import com.example.loantrendhub.util.TextCleanUtil;
 import org.apache.poi.ss.usermodel.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
@@ -17,12 +20,16 @@ import java.util.regex.Pattern;
 
 @Service
 public class IngestService {
+    private static final Logger log = LoggerFactory.getLogger(IngestService.class);
     private static final Pattern DATE_PATTERN = Pattern.compile("(20\\d{2})[.-/](\\d{1,2})[.-/](\\d{1,2})");
-    private static final Set<String> INVALID_BRANCH = Set.of("单位", "合计", "各项贷款", "总计");
+    private static final Set<String> INVALID_BRANCH = Set.of("单位", "合计", "各项贷款", "总计", "制表", "注");
+    private static final int UPSERT_BATCH_SIZE = 1000;
     private final FactRepo factRepo;
+    private final TransactionTemplate transactionTemplate;
 
-    public IngestService(FactRepo factRepo) {
+    public IngestService(FactRepo factRepo, TransactionTemplate transactionTemplate) {
         this.factRepo = factRepo;
+        this.transactionTemplate = transactionTemplate;
     }
 
     public Map<String, Object> ingest(List<MultipartFile> files) throws Exception {
@@ -40,7 +47,8 @@ public class IngestService {
     }
 
     public Map<String, Object> ingestStored(List<ImportJobService.StoredUpload> files) throws Exception {
-        List<FactRow> all = new ArrayList<>();
+        int totalRows = 0;
+        int totalSaved = 0;
         List<String> accepted = new ArrayList<>();
         List<String> messages = new ArrayList<>();
 
@@ -50,23 +58,50 @@ public class IngestService {
 
             try (InputStream in = Files.newInputStream(file.path()); Workbook wb = WorkbookFactory.create(in)) {
                 Sheet sheet = wb.getSheetAt(0);
-                if (bizDate == null) bizDate = extractBizDateFromSheet(sheet);
+                if (bizDate == null) {
+                    bizDate = extractBizDateFromSheet(sheet);
+                }
                 if (bizDate == null) {
                     messages.add("[SKIP] " + source + "：未识别到业务日期");
                     continue;
                 }
                 List<FactRow> parsed = parseSheet(sheet, bizDate, source);
-                all.addAll(parsed);
+                int fileSaved = persistFileInChunks(parsed);
+                totalRows += parsed.size();
+                totalSaved += fileSaved;
                 accepted.add(source);
-                messages.add("[OK] " + source + "：date=" + bizDate + " rows=" + parsed.size());
+                messages.add("[OK] " + source + "：date=" + bizDate + " rows=" + parsed.size() + " saved=" + fileSaved);
             } catch (Exception ex) {
-                messages.add("[ERR] " + source + "：" + ex.getMessage());
-                throw ex;
+                Throwable root = rootCause(ex);
+                String reason = root.getMessage() == null ? root.getClass().getSimpleName() : root.getMessage();
+                log.error("ingest file failed: {}", source, ex);
+                messages.add("[ERR] " + source + "：" + reason);
+                throw new IllegalStateException("导入失败(" + source + "): " + reason, ex);
             }
         }
 
-        int saved = all.isEmpty() ? 0 : Arrays.stream(factRepo.upsertBatch(all)).sum();
-        return Map.of("acceptedFiles", accepted, "rows", all.size(), "saved", saved, "messages", messages);
+        return Map.of("acceptedFiles", accepted, "rows", totalRows, "saved", totalSaved, "messages", messages);
+    }
+
+
+    private int persistFileInChunks(List<FactRow> parsed) {
+        return transactionTemplate.execute(status -> {
+            int saved = 0;
+            for (int i = 0; i < parsed.size(); i += UPSERT_BATCH_SIZE) {
+                int end = Math.min(i + UPSERT_BATCH_SIZE, parsed.size());
+                List<FactRow> chunk = parsed.subList(i, end);
+                saved += Arrays.stream(factRepo.upsertBatch(chunk)).sum();
+            }
+            return saved;
+        });
+    }
+
+    private Throwable rootCause(Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return current;
     }
 
     private List<FactRow> parseSheet(Sheet sheet, String bizDate, String sourceFile) {
@@ -106,17 +141,16 @@ public class IngestService {
 
             String branch = normalizeBranch(formatter.formatCellValue(row.getCell(branchCol)));
             if (branch.isBlank()) continue;
-            if (branch.contains("各项贷款") || branch.contains("单位") || branch.contains("制表") || branch.contains("注")) continue;
+            if (INVALID_BRANCH.stream().anyMatch(branch::contains)) continue;
 
             for (Map.Entry<Integer, String> e : metricByCol.entrySet()) {
                 int c = e.getKey();
                 String scope = DateUtil.normalizeScope(scopeByCol.getOrDefault(c, "PHY"));
-                Double value = parseNumeric(row.getCell(c), formatter);
-                if (value == null) continue;
-                rows.add(new FactRow(bizDate, scope, branch, e.getValue(), value, sourceFile));
+                Double val = parseNumeric(row.getCell(c), formatter);
+                if (val == null) continue;
+                rows.add(new FactRow(bizDate, scope, branch, e.getValue(), val, sourceFile));
             }
         }
-
         if (rows.isEmpty()) {
             throw new IllegalArgumentException("解析结果为空：请确认表头未被改坏，且“单位/网点”列可识别（常见在B列）");
         }

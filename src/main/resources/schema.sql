@@ -1,9 +1,9 @@
-CREATE TABLE IF NOT EXISTS fact_trend (
-                                          biz_date TEXT NOT NULL,
-                                          scope TEXT NOT NULL,
-                                          branch TEXT NOT NULL,
-                                          metric TEXT NOT NULL,
-                                          value REAL,
+CREATE TABLE IF NOT EXISTS fact_metric_daily (
+                                                 biz_date TEXT NOT NULL,
+                                                 scope TEXT NOT NULL,
+                                                 branch TEXT NOT NULL,
+                                                 metric TEXT NOT NULL,
+                                                 val REAL,
                                           source_file TEXT,
                                           created_at TEXT DEFAULT (datetime('now')),
     PRIMARY KEY (biz_date, scope, branch, metric)

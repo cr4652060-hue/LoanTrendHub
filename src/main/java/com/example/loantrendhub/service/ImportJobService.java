@@ -1,5 +1,6 @@
 package com.example.loantrendhub.service;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -15,6 +16,7 @@ import java.util.concurrent.*;
 
 @Service
 public class ImportJobService {
+    private static final Logger log = LoggerFactory.getLogger(ImportJobService.class);
     private final ExecutorService importPool = Executors.newFixedThreadPool(2);
     private final Map<String, JobState> jobs = new ConcurrentHashMap<>();
     private final IngestService ingestService;
@@ -52,9 +54,12 @@ public class ImportJobService {
             state.result = result;
             state.doneFiles = stagedFiles.size();
         } catch (Exception ex) {
+            Throwable root = rootCause(ex);
+            String reason = root.getMessage() == null ? root.getClass().getSimpleName() : root.getMessage();
+            log.error("import job {} failed", jobId, ex);
             state.status = "FAILED";
             state.completedAt = Instant.now().toString();
-            state.error = ex.getMessage();
+            state.error = reason;
         } finally {
             for (StoredUpload file : stagedFiles) {
                 try {
@@ -83,7 +88,13 @@ public class ImportJobService {
     }
 
     public record StoredUpload(String sourceName, Path path) {}
-
+    private Throwable rootCause(Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return current;
+    }
     private static final class JobState {
         String status;
         int totalFiles;

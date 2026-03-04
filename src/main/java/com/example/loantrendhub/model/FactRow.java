@@ -5,6 +5,6 @@ public record FactRow(
         String scope,
         String branch,
         String metric,
-        Double value,
+        Double val,
         String sourceFile
 ) {}

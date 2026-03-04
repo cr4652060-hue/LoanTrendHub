@@ -35,10 +35,12 @@ public class FactRepo {
             return new int[0];
         }
         String sql = """
-                INSERT INTO fact_trend(biz_date, scope, branch, metric, value, source_file)
-                VALUES(?,?,?,?,?,?)
-                ON CONFLICT(biz_date, scope, branch, metric)
-                DO UPDATE SET value = excluded.value, source_file = excluded.source_file
+                    INSERT INTO fact_metric_daily(biz_date, scope, branch, metric, val, source_file)
+                                                                                                        VALUES(?,?,?,?,?,?)
+                                                                                                        AS new
+                                                                                                        ON DUPLICATE KEY UPDATE
+                                                                                                        val = new.val,
+                                                                                                        source_file = new.source_file
                 """;
         List<Object[]> batchArgs = rows.stream()
                 .map(row -> new Object[]{
@@ -46,7 +48,7 @@ public class FactRepo {
                         row.scope(),
                         row.branch(),
                         row.metric(),
-                        row.value(),
+                        row.val(),
                         row.sourceFile()
                 })
                 .toList();
@@ -137,7 +139,7 @@ public class FactRepo {
         args.add(date);
         args.add(scope);
         args.addAll(metrics);
-        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, " + NORMALIZED_BRANCH_SQL + " AS branch, metric, val AS value, source_file FROM fact_metric_daily " +
+        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, " + NORMALIZED_BRANCH_SQL + " AS branch, metric, val, source_file FROM fact_metric_daily " +
                 "WHERE biz_date=? AND " + NORMALIZED_SCOPE_SQL + " = ? AND metric IN (" + placeholders + ")";
         return jdbcTemplate.query(sql, this::mapFactRow, args.toArray());
     }
@@ -151,7 +153,7 @@ public class FactRepo {
         args.add(start);
         args.add(end);
         args.addAll(branches);
-        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, " + NORMALIZED_BRANCH_SQL + " AS branch, metric, val AS value, source_file FROM fact_metric_daily " +
+        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, " + NORMALIZED_BRANCH_SQL + " AS branch, metric, val, source_file FROM fact_metric_daily " +
                 "WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND metric=? AND biz_date BETWEEN ? AND ? AND " + NORMALIZED_BRANCH_SQL + " IN (" + placeholders + ") " +
                 "ORDER BY biz_date, branch";
         return jdbcTemplate.query(sql, this::mapFactRow, args.toArray());
@@ -166,14 +168,14 @@ public class FactRepo {
         args.add(start);
         args.add(end);
         args.addAll(metrics);
-        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, " + NORMALIZED_BRANCH_SQL + " AS branch, metric, val AS value, source_file FROM fact_metric_daily " +
+        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, " + NORMALIZED_BRANCH_SQL + " AS branch, metric, val, source_file FROM fact_metric_daily " +
                 "WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND " + NORMALIZED_BRANCH_SQL + "=? AND biz_date BETWEEN ? AND ? AND metric IN (" + placeholders + ") " +
                 "ORDER BY biz_date, metric";
         return jdbcTemplate.query(sql, this::mapFactRow, args.toArray());
     }
 
     public List<FactRow> findSeries(String scope, String branch, String metric, String start, String end) {
-        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, " + NORMALIZED_BRANCH_SQL + " AS branch, metric, val AS value, source_file FROM fact_metric_daily " +
+        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, " + NORMALIZED_BRANCH_SQL + " AS branch, metric, val, source_file FROM fact_metric_daily " +
                 "WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND " + NORMALIZED_BRANCH_SQL + "=? AND metric=? AND biz_date BETWEEN ? AND ? ORDER BY biz_date";
         return jdbcTemplate.query(sql, this::mapFactRow, scope, branch, metric, start, end);
     }
@@ -184,7 +186,7 @@ public class FactRepo {
                 rs.getString("scope"),
                 rs.getString("branch"),
                 rs.getString("metric"),
-                rs.getObject("value") == null ? null : rs.getDouble("value"),
+                rs.getObject("val") == null ? null : rs.getDouble("val"),
                 rs.getString("source_file")
         );
     }

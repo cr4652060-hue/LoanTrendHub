@@ -96,9 +96,9 @@ public class QueryService {
         for (FactRow row : rows) {
             Integer xi = metricIdx.get(row.metric());
             Integer yi = branchIdx.get(row.branch());
-            if (xi == null || yi == null || row.value() == null) continue;
+            if (xi == null || yi == null || row.val() == null) continue;
 
-            double v = row.value();
+            double v = row.val();
             data.add(List.of(xi, yi, v));
             min = (min == null) ? v : Math.min(min, v);
             max = (max == null) ? v : Math.max(max, v);
@@ -148,7 +148,7 @@ public class QueryService {
             }
 
             for (FactRow row : computedRows) {
-                if (!date.equals(row.bizDate()) || row.value() == null) continue;
+                if (!date.equals(row.bizDate()) || row.val() == null) continue;
                 merged.putIfAbsent(row.metric() + "#" + row.branch(), row);
             }
         }
@@ -185,8 +185,8 @@ public class QueryService {
         Map<String, Map<String, Double>> byBranch = new LinkedHashMap<>();
         for (String b : branches) byBranch.put(b, new HashMap<>());
         for (FactRow r : rows) {
-            if (r.value() == null) continue;
-            byBranch.computeIfAbsent(r.branch(), k -> new HashMap<>()).put(r.bizDate(), r.value());
+            if (r.val() == null) continue;
+            byBranch.computeIfAbsent(r.branch(), k -> new HashMap<>()).put(r.bizDate(), r.val());
         }
 
         List<SeriesResponse.Series> series = new ArrayList<>();
@@ -210,8 +210,8 @@ public class QueryService {
         List<FactRow> baseRows = factRepo.findSeriesByMetric(scope, baseMetric, branches, start, end);
         Map<String, Map<String, Double>> byBranch = new HashMap<>();
         for (FactRow row : baseRows) {
-            if (row.value() == null) continue;
-            byBranch.computeIfAbsent(row.branch(), k -> new HashMap<>()).put(row.bizDate(), row.value());
+            if (row.val() == null) continue;
+            byBranch.computeIfAbsent(row.branch(), k -> new HashMap<>()).put(row.bizDate(), row.val());
         }
 
         List<FactRow> deltaRows = new ArrayList<>();
@@ -239,8 +239,8 @@ public class QueryService {
         List<FactRow> baseRows = factRepo.findSeriesByMetric(scope, baseMetric, branches, start, end);
         Map<String, Map<String, Double>> byBranch = new HashMap<>();
         for (FactRow row : baseRows) {
-            if (row.value() == null) continue;
-            byBranch.computeIfAbsent(row.branch(), k -> new HashMap<>()).put(row.bizDate(), row.value());
+            if (row.val() == null) continue;
+            byBranch.computeIfAbsent(row.branch(), k -> new HashMap<>()).put(row.bizDate(), row.val());
         }
         String metricUpper = String.valueOf(rateMetric).toUpperCase(Locale.ROOT);
         List<FactRow> rateRows = new ArrayList<>();
@@ -304,8 +304,8 @@ public class QueryService {
         Map<String, Map<String, Double>> byMetric = new LinkedHashMap<>();
         for (String m : metrics) byMetric.put(m, new HashMap<>());
         for (FactRow r : rows) {
-            if (r.value() == null) continue;
-            byMetric.computeIfAbsent(r.metric(), k -> new HashMap<>()).put(r.bizDate(), r.value());
+            if (r.val() == null) continue;
+            byMetric.computeIfAbsent(r.metric(), k -> new HashMap<>()).put(r.bizDate(), r.val());
         }
 
         Map<String, MetricDef> mdMap = metricService.metricMap();
@@ -343,13 +343,13 @@ public class QueryService {
         }
         Map<String, Map<String, Double>> delta = new HashMap<>();
         for (FactRow r : deltaRows) {
-            if (r.value() == null) continue;
-            delta.computeIfAbsent(r.branch(), k -> new HashMap<>()).put(r.bizDate(), r.value());
+            if (r.val() == null) continue;
+            delta.computeIfAbsent(r.branch(), k -> new HashMap<>()).put(r.bizDate(), r.val());
         }
         Map<String, Map<String, Double>> base = new HashMap<>();
         for (FactRow r : baseRows) {
-            if (r.value() == null) continue;
-            base.computeIfAbsent(r.branch(), k -> new HashMap<>()).put(r.bizDate(), r.value());
+            if (r.val() == null) continue;
+            base.computeIfAbsent(r.branch(), k -> new HashMap<>()).put(r.bizDate(), r.val());
         }
 
         List<SeriesResponse.Series> series = new ArrayList<>();
