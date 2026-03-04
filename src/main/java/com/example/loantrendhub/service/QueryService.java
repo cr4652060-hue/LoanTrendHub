@@ -46,6 +46,9 @@ public class QueryService {
             .sorted()
             .toList();
 }
+    public Map<String, Object> branchDiagnostics(String scope) {
+        return factRepo.branchDiagnostics(DateUtil.normalizeScope(scope));
+    }
 
     public List<MetricDef> metrics() { return metricService.listMetrics(); }
 
