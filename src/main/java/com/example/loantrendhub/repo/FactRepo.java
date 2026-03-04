@@ -17,7 +17,12 @@ public class FactRepo {
             "WHEN scope IN ('ADJ','实体贷款（还原剔转）','实体贷款(还原剔转)','还原剔转','还原') THEN 'ADJ' " +
             "ELSE scope END";
     private static final String NORMALIZED_BRANCH_SQL =
-            "TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(branch, char(10), ''), char(13), ''), ' ', ''), '　', ''), '：', ''), ':', ''), '。', ''), '.', ''), '．', ''), char(9), ''), '分理处', ''))";
+            "CASE " +
+                    "WHEN TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(branch, char(10), ''), char(13), ''), ' ', ''), '　', ''), '：', ''), ':', ''), '。', ''), '.', ''), '．', ''), char(9), ''), '分理处', '')) = '公司业务部' THEN '公司' " +
+                    "WHEN TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(branch, char(10), ''), char(13), ''), ' ', ''), '　', ''), '：', ''), ':', ''), '。', ''), '.', ''), '．', ''), char(9), ''), '分理处', '')) = '资产经营中心' THEN '经营中心' " +
+                    "WHEN TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(branch, char(10), ''), char(13), ''), ' ', ''), '　', ''), '：', ''), ':', ''), '。', ''), '.', ''), '．', ''), char(9), ''), '分理处', '')) = '小微贷营销中心' THEN '小微贷' " +
+                    "WHEN TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(branch, char(10), ''), char(13), ''), ' ', ''), '　', ''), '：', ''), ':', ''), '。', ''), '.', ''), '．', ''), char(9), ''), '分理处', '')) = '双堠' THEN '双喉' " +
+                    "ELSE TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(branch, char(10), ''), char(13), ''), ' ', ''), '　', ''), '：', ''), ':', ''), '。', ''), '.', ''), '．', ''), char(9), ''), '分理处', '')) END";
     private final JdbcTemplate jdbcTemplate;
 
     public FactRepo(JdbcTemplate jdbcTemplate) {

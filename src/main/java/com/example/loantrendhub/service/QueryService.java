@@ -114,6 +114,9 @@ public class QueryService {
         if (rows.isEmpty() && md != null && "DELTA".equalsIgnoreCase(md.kind()) && md.baseMetric() != null && !md.baseMetric().isBlank()) {
             rows = buildDeltaRowsFromBase(scope, branches, dates, metric, md.baseMetric(), start, end);
         }
+        if (rows.isEmpty() && md != null && "RATE".equalsIgnoreCase(md.kind()) && md.baseMetric() != null && !md.baseMetric().isBlank()) {
+            rows = buildRateRowsFromBase(scope, branches, dates, metric, md.baseMetric(), start, end);
+        }
         Map<String, Map<String, Double>> byBranch = new LinkedHashMap<>();
         for (String b : branches) byBranch.put(b, new HashMap<>());
         for (FactRow r : rows) {
@@ -159,6 +162,74 @@ public class QueryService {
             }
         }
         return deltaRows;
+    }
+    private List<FactRow> buildRateRowsFromBase(String scope,
+                                                List<String> branches,
+                                                List<String> dates,
+                                                String rateMetric,
+                                                String baseMetric,
+                                                String start,
+                                                String end) {
+        if (branches == null || branches.isEmpty() || dates == null || dates.isEmpty()) return List.of();
+        List<FactRow> baseRows = factRepo.findSeriesByMetric(scope, baseMetric, branches, start, end);
+        Map<String, Map<String, Double>> byBranch = new HashMap<>();
+        for (FactRow row : baseRows) {
+            if (row.value() == null) continue;
+            byBranch.computeIfAbsent(row.branch(), k -> new HashMap<>()).put(row.bizDate(), row.value());
+        }
+        String metricUpper = String.valueOf(rateMetric).toUpperCase(Locale.ROOT);
+        List<FactRow> rateRows = new ArrayList<>();
+        for (String branch : branches) {
+            Map<String, Double> values = byBranch.getOrDefault(branch, Map.of());
+            for (int i = 1; i < dates.size(); i++) {
+                String currDate = dates.get(i);
+                String prevDate = dates.get(i - 1);
+                Double curr = values.get(currDate);
+                Double prev = values.get(prevDate);
+                if (curr == null || prev == null || Math.abs(prev) < EPSILON) continue;
+                double ratio;
+                if (metricUpper.contains("MTD")) {
+                    ratio = calcMonthToDateRatio(values, dates, i, curr);
+                } else if (metricUpper.contains("YTD")) {
+                    ratio = calcYearToDateRatio(values, dates, i, curr);
+                } else {
+// DOD/GR: 当前相对前一日变动占比
+                    ratio = (curr - prev) / prev;
+                }
+                if (Double.isFinite(ratio)) {
+                    rateRows.add(new FactRow(currDate, scope, branch, rateMetric, ratio * 100.0, "AUTO_COMPUTED_RATE"));
+                }
+            }
+        }
+        return rateRows;
+    }
+    private double calcMonthToDateRatio(Map<String, Double> values, List<String> dates, int idx, Double curr) {
+        String currDate = dates.get(idx);
+        LocalDate d = LocalDate.parse(currDate);
+        LocalDate monthStart = d.withDayOfMonth(1);
+        Double baseline = null;
+        for (String day : dates) {
+            LocalDate ld = LocalDate.parse(day);
+            if (ld.isBefore(monthStart) || ld.isAfter(d)) continue;
+            baseline = values.get(day);
+            if (baseline != null) break;
+        }
+        if (baseline == null || Math.abs(baseline) < EPSILON) return Double.NaN;
+        return (curr - baseline) / baseline;
+    }
+    private double calcYearToDateRatio(Map<String, Double> values, List<String> dates, int idx, Double curr) {
+        String currDate = dates.get(idx);
+        LocalDate d = LocalDate.parse(currDate);
+        LocalDate yearStart = d.withDayOfYear(1);
+        Double baseline = null;
+        for (String day : dates) {
+            LocalDate ld = LocalDate.parse(day);
+            if (ld.isBefore(yearStart) || ld.isAfter(d)) continue;
+            baseline = values.get(day);
+            if (baseline != null) break;
+        }
+        if (baseline == null || Math.abs(baseline) < EPSILON) return Double.NaN;
+        return (curr - baseline) / baseline;
     }
 
     private SeriesResponse seriesByMetrics(String scope, String branch, List<String> metrics, String start, String end) {
