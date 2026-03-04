@@ -4,6 +4,7 @@ import com.example.loantrendhub.model.FactRow;
 import com.example.loantrendhub.repo.FactRepo;
 import com.example.loantrendhub.util.DateUtil;
 import com.example.loantrendhub.util.ExcelUtil.HeaderResolver;
+import com.example.loantrendhub.util.TextCleanUtil;
 import org.apache.poi.ss.usermodel.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -112,7 +113,8 @@ public class IngestService {
     
     private String normalizeBranch(String raw){
         if(raw==null) return "";
-        String b = raw.trim();
+        String b = TextCleanUtil.cleanText(raw);
+        if (b == null || b.isBlank()) return "";
         // drop common suffixes / noise
         b = b.replaceAll("\\s+",""); // remove internal spaces
         b = b.replace("网点",""); // avoid accidental headers
@@ -123,7 +125,7 @@ public class IngestService {
         return b;
     }
 
-private int detectHeaderDepth(Sheet sheet, DataFormatter formatter) {
+    private int detectHeaderDepth(Sheet sheet, DataFormatter formatter) {
         int max = Math.min(12, sheet.getLastRowNum());
         int depth = 5; // 默认：0..5 作为表头（你这类日报表基本够）
         for (int r = 0; r <= max; r++) {

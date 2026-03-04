@@ -476,7 +476,14 @@ function setMultiSelected(sel, values){
             fillSelect($('deltaSel'), deltaMetrics.length ? deltaMetrics : METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
             fillSelect($('baseSel'), baseMetrics.length ? baseMetrics : METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
 
-            const defaultScope = SCOPE_OPTIONS?.[0]?.key ?? '';
+            let defaultScope = SCOPE_OPTIONS?.[0]?.key ?? 'PHY';
+            for (const opt of (SCOPE_OPTIONS || [])) {
+                const branchProbe = normalizeBranchOptions(await jget('/api/branches?scope=' + encodeURIComponent(opt.key)));
+                if (branchProbe.length > 0) {
+                    defaultScope = opt.key;
+                    break;
+                }
+            }
             const defaultMetric = METRIC_OPTIONS?.[0]?.metric ?? METRIC_OPTIONS?.[0]?.key ?? '';
             $('scopeSel').value = defaultScope;
             $('metricSel').value = defaultMetric;
@@ -626,6 +633,10 @@ function setMultiSelected(sel, values){
         setBadge('badgeScope', getScopeName(scope) || '-');
         try{
             ALL_BRANCHES = normalizeBranchOptions(await jget('/api/branches?scope=' + encodeURIComponent(scope)));
+            if (ALL_BRANCHES.length === 0) {
+                const debug = await jget('/api/branches/debug?scope=' + encodeURIComponent(scope));
+                log('[WARN] 当前口径 branches=0，调试信息：' + JSON.stringify(debug));
+            }
             $('branchSearch').value='';
             renderBranchList();
             log(`[OK] 切换口径：${scope}，branches=${ALL_BRANCHES.length}`);

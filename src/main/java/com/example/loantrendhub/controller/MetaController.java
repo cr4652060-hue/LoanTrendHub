@@ -1,8 +1,8 @@
 package com.example.loantrendhub.controller;
 
-import com.example.loantrendhub.model.MetricDef;
 import com.example.loantrendhub.service.QueryService;
 import com.example.loantrendhub.util.DateUtil;
+import com.example.loantrendhub.util.TextCleanUtil;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -21,28 +21,41 @@ public class MetaController {
     }
 
     @GetMapping("/scopes")
-public List<Map<String, String>> scopes() {
-    return List.of(
-            Map.of("key", "PHY", "name", "实体贷款（纯账面）"),
-            Map.of("key", "ADJ", "name", "实体贷款（还原剔转）")
-    );
-}
+    public List<Map<String, String>> scopes() {
+        List<String> availableScopes = queryService.scopes();
+        if (availableScopes.isEmpty()) {
+            availableScopes = List.of("PHY", "ADJ");
+        }
+        return availableScopes.stream()
+                .map(DateUtil::normalizeScope)
+                .distinct()
+                .map(scope -> Map.of(
+                        "key", scope,
+                        "name", TextCleanUtil.cleanText(DateUtil.scopeDisplayName(scope))
+                ))
+                .toList();
+    }
 
     @GetMapping("/branches")
-    public List<String> branches(@RequestParam(name = "scope") String scope) {
+    public List<String> branches(@RequestParam(name = "scope", required = false) String scope) {
         return queryService.branches(scope);
     }
 
+    @GetMapping("/branches/debug")
+    public Map<String, Object> branchDebug(@RequestParam(name = "scope", required = false) String scope) {
+        return queryService.branchDiagnostics(scope);
+    }
+
     @GetMapping("/metrics")
-public List<Map<String, Object>> metrics() {
-    return queryService.metrics().stream()
-            .map(m -> Map.<String, Object>of(
-                    "key", m.metric(),
-                    "name", m.name(),
-                    "unit", m.unit(),
-                    "kind", m.kind() == null ? "" : m.kind(),
-                    "baseMetric", m.baseMetric() == null ? "" : m.baseMetric()
-            ))
-            .toList();
-}
+    public List<Map<String, Object>> metrics() {
+        return queryService.metrics().stream()
+                .map(m -> Map.<String, Object>of(
+                        "key", m.metric(),
+                        "name", TextCleanUtil.cleanText(m.name()),
+                        "unit", TextCleanUtil.cleanText(m.unit()),
+                        "kind", m.kind() == null ? "" : TextCleanUtil.cleanText(m.kind()),
+                        "baseMetric", m.baseMetric() == null ? "" : TextCleanUtil.cleanText(m.baseMetric())
+                ))
+                .toList();
+    }
 }

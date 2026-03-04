@@ -7,6 +7,7 @@ import org.springframework.stereotype.Repository;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -72,6 +73,47 @@ public class FactRepo {
         return jdbcTemplate.queryForList(sql, String.class);
     }
 
+    public Map<String, Object> branchDiagnostics(String scope) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        String normalized = "PHY";
+        if (scope != null && !scope.isBlank()) {
+            normalized = scope;
+        }
+
+        Integer rowsByScope = jdbcTemplate.queryForObject(
+                "SELECT COUNT(1) FROM fact_trend WHERE " + NORMALIZED_SCOPE_SQL + " = ?",
+                Integer.class,
+                normalized
+        );
+        Integer blankBranchRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(1) FROM fact_trend WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND TRIM(COALESCE(branch,'')) = ''",
+                Integer.class,
+                normalized
+        );
+        Integer distinctRawBranch = jdbcTemplate.queryForObject(
+                "SELECT COUNT(DISTINCT branch) FROM fact_trend WHERE " + NORMALIZED_SCOPE_SQL + " = ?",
+                Integer.class,
+                normalized
+        );
+        Integer distinctNormalizedBranch = jdbcTemplate.queryForObject(
+                "SELECT COUNT(DISTINCT " + NORMALIZED_BRANCH_SQL + ") FROM fact_trend WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND " + NORMALIZED_BRANCH_SQL + " <> ''",
+                Integer.class,
+                normalized
+        );
+
+        List<String> tableColumns = jdbcTemplate.query("PRAGMA table_info(fact_trend)", (rs, rowNum) -> rs.getString("name"));
+
+        result.put("scope", normalized);
+        result.put("rowsByScope", rowsByScope == null ? 0 : rowsByScope);
+        result.put("blankBranchRows", blankBranchRows == null ? 0 : blankBranchRows);
+        result.put("distinctRawBranch", distinctRawBranch == null ? 0 : distinctRawBranch);
+        result.put("distinctNormalizedBranch", distinctNormalizedBranch == null ? 0 : distinctNormalizedBranch);
+        result.put("columns", tableColumns);
+        result.put("hasBranch", tableColumns.contains("branch"));
+        result.put("hasBranchName", tableColumns.contains("branch_name"));
+        result.put("hasOrgName", tableColumns.contains("org_name"));
+        return result;
+    }
     public List<String> findBranches(String scope) {
         String sql = "SELECT DISTINCT " + NORMALIZED_BRANCH_SQL + " AS branch FROM fact_trend " +
                 "WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND " + NORMALIZED_BRANCH_SQL + " <> '' " +
