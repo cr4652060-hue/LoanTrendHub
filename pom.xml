@@ -58,11 +58,24 @@
 
   <build>
     <plugins>
+
+      <!-- 关键：确保打出来的是可执行 Spring Boot Jar -->
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
-      <version>${spring-boot.version}</version>
-                </plugin>
+        <version>${spring-boot.version}</version>
+        <configuration>
+          <!-- 改成启动类全限定名：包名+类名 -->
+          <mainClass>com.example.loantrendhub.LoanTrendHubApplication</mainClass>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
 
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -77,6 +90,7 @@
           </compilerArgs>
         </configuration>
       </plugin>
+
     </plugins>
   </build>
 </project>
