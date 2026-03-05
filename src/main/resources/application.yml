@@ -23,8 +23,14 @@ spring:
 
 server:
   port: 18090
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
   tomcat:
     connection-timeout: 60000
+    uri-encoding: UTF-8
   error:
     include-message: always
     include-stacktrace: never

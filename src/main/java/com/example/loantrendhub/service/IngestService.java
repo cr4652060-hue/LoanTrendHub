@@ -5,7 +5,6 @@ import com.example.loantrendhub.repo.FactRepo;
 import com.example.loantrendhub.util.BranchNormalizeUtil;
 import com.example.loantrendhub.util.DateUtil;
 import com.example.loantrendhub.util.ExcelUtil.HeaderResolver;
-import com.example.loantrendhub.util.TextCleanUtil;
 import org.apache.poi.ss.usermodel.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,9 +49,10 @@ public class IngestService {
     public Map<String, Object> ingestStored(List<ImportJobService.StoredUpload> files) throws Exception {
         int totalRows = 0;
         int totalSaved = 0;
+        int totalUnknown = 0;
         List<String> accepted = new ArrayList<>();
         List<String> messages = new ArrayList<>();
-        Map<String, String> aliasMap = factRepo.findBranchAliasMap();
+        Map<String, String> aliasNormMap = factRepo.findBranchAliasNormMap();
         Set<String> canonicalBranches = new HashSet<>(factRepo.findAllBranches());
         for (ImportJobService.StoredUpload file : files) {
             String source = file.sourceName();
@@ -67,12 +67,14 @@ public class IngestService {
                     messages.add("[SKIP] " + source + "：未识别到业务日期");
                     continue;
                 }
-                List<FactRow> parsed = parseSheet(sheet, bizDate, source, aliasMap, canonicalBranches);
-                int fileSaved = persistFileInChunks(parsed);
-                totalRows += parsed.size();
+                ParseResult parsed = parseSheet(sheet, bizDate, source, aliasNormMap, canonicalBranches);
+                int fileSaved = persistFileInChunks(parsed.rows());
+                totalRows += parsed.rows().size();
                 totalSaved += fileSaved;
+                totalUnknown += parsed.unknownCount();
                 accepted.add(source);
-                messages.add("[OK] " + source + "：date=" + bizDate + " rows=" + parsed.size() + " saved=" + fileSaved);
+                messages.add("[OK] " + source + "：date=" + bizDate + " rows=" + parsed.rows().size() + " saved=" + fileSaved + " unknown=" + parsed.unknownCount());
+                messages.addAll(parsed.warnings());
             } catch (Exception ex) {
                 Throwable root = rootCause(ex);
                 String reason = root.getMessage() == null ? root.getClass().getSimpleName() : root.getMessage();
@@ -82,7 +84,7 @@ public class IngestService {
             }
         }
 
-        return Map.of("acceptedFiles", accepted, "rows", totalRows, "saved", totalSaved, "messages", messages);
+        return Map.of("acceptedFiles", accepted, "rows", totalRows, "saved", totalSaved, "unknown", totalUnknown, "messages", messages);
     }
 
 
@@ -106,21 +108,16 @@ public class IngestService {
         return current;
     }
 
-    private List<FactRow> parseSheet(Sheet sheet, String bizDate, String sourceFile, Map<String, String> aliasMap, Set<String> canonicalBranches) {
+    private ParseResult parseSheet(Sheet sheet, String bizDate, String sourceFile, Map<String, String> aliasNormMap, Set<String> canonicalBranches) {
         DataFormatter formatter = new DataFormatter();
 
         int maxCol = 0;
         for (Row row : sheet) if (row != null && row.getLastCellNum() > maxCol) maxCol = row.getLastCellNum();
 
-        // ✅ 识别表头深度：前 12 行里，最后一个“像表头”的行作为 headerDepth
         int headerDepth = detectHeaderDepth(sheet, formatter);
-
-        // ✅ 识别“单位/网点”所在列：优先找“单位”，找不到再用采样推断
         int branchCol = detectBranchCol(sheet, formatter, headerDepth);
-
         Map<Integer, String> scopeByCol = detectScopeByColumn(sheet, maxCol, formatter);
 
-        // metricByCol：把每列表头拼起来 -> metric
         Map<Integer, String> metricByCol = new HashMap<>();
         for (int c = 0; c < maxCol; c++) {
             StringBuilder header = new StringBuilder();
@@ -136,17 +133,26 @@ public class IngestService {
 
         int dataStart = headerDepth + 1;
         List<FactRow> rows = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        int unknownCount = 0;
 
         for (int r = dataStart; r <= sheet.getLastRowNum(); r++) {
             Row row = sheet.getRow(r);
             if (row == null) continue;
 
-            String normalizedBranch = BranchNormalizeUtil.normalizeBranch(formatter.formatCellValue(row.getCell(branchCol)));
-            if (normalizedBranch.isBlank()) continue;
-            if (INVALID_BRANCH.stream().anyMatch(normalizedBranch::contains)) continue;
-            String branch = aliasMap.getOrDefault(normalizedBranch, normalizedBranch);
-            if (!canonicalBranches.contains(branch)) {
-                throw new IllegalArgumentException("未知网点: " + normalizedBranch + "（来源文件: " + sourceFile + "），请在 branch_alias/branch_def 维护映射后重试");
+            String rawBranch = formatter.formatCellValue(row.getCell(branchCol));
+            BranchNormalizeUtil.BranchNormalized normalized = BranchNormalizeUtil.normalize(rawBranch);
+            String displayBranch = normalized.displayCandidate();
+            String normKey = normalized.normKey();
+            if (displayBranch.isBlank()) continue;
+            if (INVALID_BRANCH.stream().anyMatch(displayBranch::contains)) continue;
+
+            String branch = canonicalBranches.contains(displayBranch) ? displayBranch : aliasNormMap.get(normKey);
+            if (branch == null || branch.isBlank()) {
+                unknownCount++;
+                factRepo.logUnknownBranch(rawBranch, normKey, sourceFile, r + 1);
+                warnings.add("[WARN] unknown branch: file=" + sourceFile + " row=" + (r + 1) + " raw='" + rawBranch + "' norm='" + normKey + "'");
+                continue;
             }
 
             for (Map.Entry<Integer, String> e : metricByCol.entrySet()) {
@@ -154,24 +160,23 @@ public class IngestService {
                 String scope = DateUtil.normalizeScope(scopeByCol.getOrDefault(c, "PHY"));
                 Double val = parseNumeric(row.getCell(c), formatter);
                 if (val == null) continue;
-                rows.add(new FactRow(bizDate, scope, branch, e.getValue(), val, sourceFile));
+                rows.add(new FactRow(bizDate, scope, branch, e.getValue(), val, sourceFile, rawBranch, normKey));
             }
         }
-        if (rows.isEmpty()) {
+        if (rows.isEmpty() && unknownCount == 0) {
             throw new IllegalArgumentException("解析结果为空：请确认表头未被改坏，且“单位/网点”列可识别（常见在B列）");
         }
-        return rows;
+        return new ParseResult(rows, unknownCount, warnings);
     }
 
 
     private int detectHeaderDepth(Sheet sheet, DataFormatter formatter) {
         int max = Math.min(12, sheet.getLastRowNum());
-        int depth = 5; // 默认：0..5 作为表头（你这类日报表基本够）
+        int depth = 5;
         for (int r = 0; r <= max; r++) {
             Row row = sheet.getRow(r);
             if (row == null) continue;
             String line = rowToText(row, formatter).replace(" ", "");
-            // 命中明显表头关键词则更新 depth
             if (line.contains("实体贷款") || line.contains("纯账面") || line.contains("还原") ||
                     line.contains("较上日") || line.contains("较上月") || line.contains("较年初") ||
                     line.contains("增量较同期") || line.contains("增幅") ||
@@ -183,7 +188,6 @@ public class IngestService {
     }
 
     private int detectBranchCol(Sheet sheet, DataFormatter formatter, int headerDepth) {
-        // 1) 优先在表头区找 “单位”
         int maxCol = 0;
         for (int r = 0; r <= headerDepth; r++) {
             Row row = sheet.getRow(r);
@@ -197,7 +201,6 @@ public class IngestService {
                 if ("网点".equals(t) || t.contains("单位")) return c;
             }
         }
-        // 2) 采样 dataStart..dataStart+10：哪个列更像“网点名”就用哪个
         int dataStart = headerDepth + 1;
         int sampleEnd = Math.min(sheet.getLastRowNum(), dataStart + 10);
 
@@ -224,7 +227,6 @@ public class IngestService {
     }
 
     private boolean looksLikeBranch(String s) {
-        // 网点名一般包含：支行/分理处/营业部/信用社 等
         if (s.length() < 2) return false;
         return s.contains("支行") || s.contains("分理处") || s.contains("营业部") || s.contains("信用社") || !s.matches(".*\\d.*");
     }
@@ -265,7 +267,6 @@ public class IngestService {
         if (raw == null || raw.isBlank()) return null;
         String s = raw.replace(",", "").replace("%", "").trim();
         try {
-            // 注意：schema 里 GR_* 的单位是 %，前端也按 % 画；这里不除以100，保持“3.98 => 3.98”
             return Double.parseDouble(s);
         } catch (NumberFormatException ex) {
             return null;
@@ -282,7 +283,6 @@ public class IngestService {
 
     private String extractBizDateFromSheet(Sheet sheet) {
         DataFormatter formatter = new DataFormatter();
-        // 常见位置：B2
         try {
             Row r = sheet.getRow(1);
             if (r != null) {
@@ -292,7 +292,6 @@ public class IngestService {
             }
         } catch (Exception ignored) {}
 
-        // 兜底：前 8 行扫日期
         for (int r = 0; r <= Math.min(8, sheet.getLastRowNum()); r++) {
             Row row = sheet.getRow(r);
             if (row == null) continue;
@@ -304,4 +303,6 @@ public class IngestService {
         }
         return null;
     }
+
+    private record ParseResult(List<FactRow> rows, int unknownCount, List<String> warnings) {}
 }

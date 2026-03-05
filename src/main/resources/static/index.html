@@ -280,7 +280,7 @@ function setMultiSelected(sel, values){
     const heatChart = echarts.init($('heatChart'));
     const trendChart = echarts.init($('trendChart'));
     const growthChart = echarts.init($('growthChart'));
-
+    const MAX_TREND_SERIES = 20;
     const BRANCH_PRIORITY = [
         '营业部','界湖','大庄','张庄','依汶','马牧池','岸堤','孙祖','双喉','青驼','砖埠','葛沟','杨坡','蒲汪','湖头','苏村','铜井',
         '辛集','朱家里庄','中高湖','岱庄','高里','河阳','大王庄','东张哨','库沟','城区','开发区','小微贷','小微贷-房贷','府前','汉街','才山','公司','经营中心'
@@ -324,22 +324,36 @@ function setMultiSelected(sel, values){
     }
 
     function renderMultiLine(chart, title, x, series, unit){
-        const safeSeries = (series || []).map(s => ({
-            type: 'line',
-            name: s?.name || '-',
-            data: s?.data || s?.y || [],
-            smooth: true,
-            showSymbol: false,
-            connectNulls: false,
-            emphasis: { focus: 'series' }
-        }));
+        const xSorted = [...(x || [])].sort();
+        const safeSeries = (series || []).slice(0, MAX_TREND_SERIES).map(s => {
+            const values = s?.data || s?.y || [];
+            const safeY = xSorted.map((_, idx) => {
+                const v = values[idx];
+                const n = Number(v);
+                return Number.isFinite(n) ? n : null;
+            });
+            return {
+                type: 'line',
+                name: s?.name || '-',
+                data: safeY,
+                smooth: true,
+                showSymbol: false,
+                connectNulls: false,
+                emphasis: { focus: 'series' }
+            };
+        });
+        if(safeSeries.length === 0){
+            chart.clear();
+            log('[WARN] 没有数据，请先导入或调整筛选条件');
+            return;
+        }
         chart.setOption({
             animation: false,
             title: { text: title || '' },
             tooltip: { trigger: 'axis' },
             legend: { type: 'scroll', top: 28 },
             grid: { left: 60, right: 24, top: 76, bottom: 70 },
-            xAxis: { type: 'category', data: x || [] },
+            xAxis: { type: 'category', data: xSorted },
             yAxis: { type: 'value', name: unit || '' },
             dataZoom: [
                 { type: 'inside', xAxisIndex: 0 },
@@ -587,7 +601,12 @@ function setMultiSelected(sel, values){
             const start = $('start').value || '';
             const end = $('end').value || '';
             const branchArr = getSelectedValues($('branchMulti'));
-            const branches = (branchArr.length ? branchArr : ALL_BRANCHES).join(',');
+            const picked = branchArr.length ? branchArr : ALL_BRANCHES;
+            if(picked.length > MAX_TREND_SERIES){
+                log(`[WARN] 网点过多（${picked.length}），请缩小到 ${MAX_TREND_SERIES} 个以内`);
+                return;
+            }
+            const branches = picked.join(',');
             const url = `/api/trend/multi?scope=${encodeURIComponent(scope)}&metric=${encodeURIComponent(metric)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&branches=${encodeURIComponent(branches)}`;
             const resp = await jget(url);
             renderMultiLine(trendChart, resp.title || `趋势：${scope} / ${metric}`, resp.x || [], resp.series || [], resp.unit || '');
@@ -604,7 +623,12 @@ function setMultiSelected(sel, values){
             const start = $('start').value || '';
             const end = $('end').value || '';
             const branchArr = getSelectedValues($('branchMulti'));
-            const branches = (branchArr.length ? branchArr : ALL_BRANCHES).join(',');
+            const picked = branchArr.length ? branchArr : ALL_BRANCHES;
+            if(picked.length > MAX_TREND_SERIES){
+                log(`[WARN] 网点过多（${picked.length}），请缩小到 ${MAX_TREND_SERIES} 个以内`);
+                return;
+            }
+            const branches = picked.join(',');
             let deltaMetric = ($('deltaMetric').value || '').trim();
             const ds = ($('deltaSel')?.value || '').trim();
             if(ds) deltaMetric = ds;

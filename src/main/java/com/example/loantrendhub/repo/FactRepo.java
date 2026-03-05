@@ -29,11 +29,13 @@ public class FactRepo {
             return new int[0];
         }
         String sql = """
-                           INSERT INTO fact_metric_daily(biz_date, scope, branch, metric, val, source_file)
-                                                                                                                                                     VALUES(?,?,?,?,?,?)
-                                                                                                                                                     ON DUPLICATE KEY UPDATE
-                                                                                                                                                       val = VALUES(val),
-                                                                                                                                                       source_file = VALUES(source_file)
+                INSERT INTO fact_metric_daily (biz_date, scope, branch, metric, val, source_file, raw_branch, norm_branch_key)
+                VALUES (?,?,?,?,?,?,?,?)
+                ON DUPLICATE KEY UPDATE
+                  val = VALUES(val),
+                  source_file = VALUES(source_file),
+                  raw_branch = VALUES(raw_branch),
+                  norm_branch_key = VALUES(norm_branch_key)
                 """;
         List<Object[]> batchArgs = rows.stream()
                 .map(row -> new Object[]{
@@ -42,11 +44,20 @@ public class FactRepo {
                         row.branch(),
                         row.metric(),
                         row.val(),
-                        row.sourceFile()
+                        row.sourceFile(),
+                        row.rawBranch(),
+                        row.normBranchKey()
                 })
                 .toList();
 
         return jdbcTemplate.batchUpdate(sql, batchArgs);
+    }
+
+    public void logUnknownBranch(String rawBranch, String normKey, String sourceFile, Integer rowNo) {
+        jdbcTemplate.update(
+                "INSERT INTO unknown_branch_log(raw_branch, norm_key, source_file, row_no) VALUES (?,?,?,?)",
+                rawBranch, normKey, sourceFile, rowNo
+        );
     }
 
     public Map<String, String> dateRange() {
@@ -63,6 +74,7 @@ public class FactRepo {
             return Map.of("min", min, "max", max);
         });
     }
+
     public List<String> findScopes() {
         String sql = "SELECT DISTINCT " + NORMALIZED_SCOPE_SQL + " AS normalized_scope FROM fact_metric_daily ORDER BY normalized_scope";
         return jdbcTemplate.queryForList(sql, String.class);
@@ -105,13 +117,13 @@ public class FactRepo {
         return findBranches(null);
     }
 
-    public Map<String, String> findBranchAliasMap() {
+    public Map<String, String> findBranchAliasNormMap() {
         return jdbcTemplate.query(
-                "SELECT alias, branch FROM branch_alias",
+                "SELECT norm_key, branch FROM branch_alias",
                 rs -> {
                     Map<String, String> map = new LinkedHashMap<>();
                     while (rs.next()) {
-                        map.put(rs.getString("alias"), rs.getString("branch"));
+                        map.put(rs.getString("norm_key"), rs.getString("branch"));
                     }
                     return map;
                 }
@@ -131,7 +143,7 @@ public class FactRepo {
         args.add(date);
         args.add(scope);
         args.addAll(metrics);
-        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, branch, metric, val, source_file FROM fact_metric_daily " +
+        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, branch, metric, val, source_file, raw_branch, norm_branch_key FROM fact_metric_daily " +
                 "WHERE biz_date=? AND " + NORMALIZED_SCOPE_SQL + " = ? AND metric IN (" + placeholders + ")";
         return jdbcTemplate.query(sql, this::mapFactRow, args.toArray());
     }
@@ -145,7 +157,7 @@ public class FactRepo {
         args.add(start);
         args.add(end);
         args.addAll(branches);
-        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, branch, metric, val, source_file FROM fact_metric_daily " +
+        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, branch, metric, val, source_file, raw_branch, norm_branch_key FROM fact_metric_daily " +
                 "WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND metric=? AND biz_date BETWEEN ? AND ? AND branch IN (" + placeholders + ") " +
                 "ORDER BY biz_date, branch";
         return jdbcTemplate.query(sql, this::mapFactRow, args.toArray());
@@ -160,14 +172,14 @@ public class FactRepo {
         args.add(start);
         args.add(end);
         args.addAll(metrics);
-        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, branch, metric, val, source_file FROM fact_metric_daily " +
+        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, branch, metric, val, source_file, raw_branch, norm_branch_key FROM fact_metric_daily " +
                 "WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND branch=? AND biz_date BETWEEN ? AND ? AND metric IN (" + placeholders + ") " +
                 "ORDER BY biz_date, metric";
         return jdbcTemplate.query(sql, this::mapFactRow, args.toArray());
     }
 
     public List<FactRow> findSeries(String scope, String branch, String metric, String start, String end) {
-        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, branch, metric, val, source_file FROM fact_metric_daily " +
+        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, branch, metric, val, source_file, raw_branch, norm_branch_key FROM fact_metric_daily " +
                 "WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND branch=? AND metric=? AND biz_date BETWEEN ? AND ? ORDER BY biz_date";
         return jdbcTemplate.query(sql, this::mapFactRow, scope, branch, metric, start, end);
     }
@@ -179,7 +191,9 @@ public class FactRepo {
                 rs.getString("branch"),
                 rs.getString("metric"),
                 rs.getObject("val") == null ? null : rs.getDouble("val"),
-                rs.getString("source_file")
+                rs.getString("source_file"),
+                rs.getString("raw_branch"),
+                rs.getString("norm_branch_key")
         );
     }
 }

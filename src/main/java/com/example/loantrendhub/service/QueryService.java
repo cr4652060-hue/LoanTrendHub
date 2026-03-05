@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 public class QueryService {
 
     private static final double EPSILON = 1e-9;
+    private static final int MAX_BRANCH_SERIES = 20;
     private final FactRepo factRepo;
     private final MetricService metricService;
     private final boolean fillMissingWithZero;
@@ -165,7 +166,10 @@ public class QueryService {
     }
 
     private SeriesResponse seriesByBranches(String scope, String metric, List<String> branches, String start, String end) {
-        List<String> dates = factRepo.findDates(scope, start, end);
+        if (branches.size() > MAX_BRANCH_SERIES) {
+            throw new IllegalArgumentException("网点过多，请缩小选择（最多" + MAX_BRANCH_SERIES + "个）");
+        }
+        List<String> dates = new ArrayList<>(new TreeSet<>(factRepo.findDates(scope, start, end)));
         List<FactRow> rows = factRepo.findSeriesByMetric(scope, metric, branches, start, end);
         MetricDef md = metricService.metricMap().get(metric);
         if (rows.isEmpty() && md != null && "DELTA".equalsIgnoreCase(md.kind()) && md.baseMetric() != null && !md.baseMetric().isBlank()) {
@@ -184,10 +188,12 @@ public class QueryService {
         List<SeriesResponse.Series> series = new ArrayList<>();
         for (String b : branches) {
             Map<String, Double> map = byBranch.getOrDefault(b, Map.of());
-            List<Double> y = dates.stream().map(d -> map.getOrDefault(d, null)).toList();
+            List<Double> y = dates.stream().map(d -> {
+                Double v = map.getOrDefault(d, null);
+                return (v == null || !Double.isFinite(v)) ? null : v;
+            }).toList();
             series.add(new SeriesResponse.Series(b, y));
         }
-
         String unit = md == null ? "" : md.unit();
         return new SeriesResponse("趋势：" + scope + " / " + (md == null ? metric : md.name()), unit, dates, series);
     }
@@ -290,7 +296,7 @@ public class QueryService {
     }
 
     private SeriesResponse seriesByMetrics(String scope, String branch, List<String> metrics, String start, String end) {
-        List<String> dates = factRepo.findDates(scope, start, end);
+        List<String> dates = new ArrayList<>(new TreeSet<>(factRepo.findDates(scope, start, end)));
         List<FactRow> rows = factRepo.findSeriesByBranch(scope, branch, metrics, start, end);
 
         Map<String, Map<String, Double>> byMetric = new LinkedHashMap<>();
@@ -304,7 +310,10 @@ public class QueryService {
         List<SeriesResponse.Series> series = new ArrayList<>();
         for (String m : metrics) {
             Map<String, Double> map = byMetric.getOrDefault(m, Map.of());
-            List<Double> y = dates.stream().map(d -> map.getOrDefault(d, null)).toList();
+            List<Double> y = dates.stream().map(d -> {
+                Double v = map.getOrDefault(d, null);
+                return (v == null || !Double.isFinite(v)) ? null : v;
+            }).toList();
             MetricDef md = mdMap.get(m);
             series.add(new SeriesResponse.Series(md == null ? m : md.name(), y));
         }
@@ -323,9 +332,11 @@ public class QueryService {
                                        String start,
                                        String end) {
         scope = DateUtil.normalizeScope(scope);
-        List<String> dates = factRepo.findDates(scope, start, end);
+        if (branches.size() > MAX_BRANCH_SERIES) {
+            throw new IllegalArgumentException("网点过多，请缩小选择（最多" + MAX_BRANCH_SERIES + "个）");
+        }
+        List<String> dates = new ArrayList<>(new TreeSet<>(factRepo.findDates(scope, start, end)));
         if (dates.isEmpty()) return new SeriesResponse("增长率：" + scope, "%", List.of(), List.of());
-
         // 拉取两条指标的明细（同一时间窗口）
         List<FactRow> deltaRows = factRepo.findSeriesByMetric(scope, deltaMetric, branches, start, end);
         List<FactRow> baseRows  = factRepo.findSeriesByMetric(scope, baseMetric,  branches, start, end);
