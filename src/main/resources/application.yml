@@ -2,14 +2,14 @@ spring:
   datasource:
     url: jdbc:mysql://127.0.0.1:3306/loantrendhub?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true
     username: root
-    password: 123456
+    password: Yn@856391
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       maximum-pool-size: 10
       minimum-idle: 2
       connection-timeout: 30000
-      idle-timeout: 600000
-      max-lifetime: 1800000
+      idle-timeout: 300000
+      max-lifetime: 600000
 
   sql:
     init:
@@ -32,4 +32,7 @@ server:
 logging:
   level:
     org.springframework.jdbc.core: INFO
-    com.zaxxer.hikari: INFO
+    om.zaxxer.hikari: INFO
+app:
+  query:
+    fill-missing-with-zero: true

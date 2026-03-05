@@ -2,6 +2,7 @@ package com.example.loantrendhub.service;
 
 import com.example.loantrendhub.model.FactRow;
 import com.example.loantrendhub.repo.FactRepo;
+import com.example.loantrendhub.util.BranchNormalizeUtil;
 import com.example.loantrendhub.util.DateUtil;
 import com.example.loantrendhub.util.ExcelUtil.HeaderResolver;
 import com.example.loantrendhub.util.TextCleanUtil;
@@ -51,7 +52,8 @@ public class IngestService {
         int totalSaved = 0;
         List<String> accepted = new ArrayList<>();
         List<String> messages = new ArrayList<>();
-
+        Map<String, String> aliasMap = factRepo.findBranchAliasMap();
+        Set<String> canonicalBranches = new HashSet<>(factRepo.findAllBranches());
         for (ImportJobService.StoredUpload file : files) {
             String source = file.sourceName();
             String bizDate = extractBizDate(source);
@@ -65,7 +67,7 @@ public class IngestService {
                     messages.add("[SKIP] " + source + "：未识别到业务日期");
                     continue;
                 }
-                List<FactRow> parsed = parseSheet(sheet, bizDate, source);
+                List<FactRow> parsed = parseSheet(sheet, bizDate, source, aliasMap, canonicalBranches);
                 int fileSaved = persistFileInChunks(parsed);
                 totalRows += parsed.size();
                 totalSaved += fileSaved;
@@ -104,7 +106,7 @@ public class IngestService {
         return current;
     }
 
-    private List<FactRow> parseSheet(Sheet sheet, String bizDate, String sourceFile) {
+    private List<FactRow> parseSheet(Sheet sheet, String bizDate, String sourceFile, Map<String, String> aliasMap, Set<String> canonicalBranches) {
         DataFormatter formatter = new DataFormatter();
 
         int maxCol = 0;
@@ -139,9 +141,13 @@ public class IngestService {
             Row row = sheet.getRow(r);
             if (row == null) continue;
 
-            String branch = normalizeBranch(formatter.formatCellValue(row.getCell(branchCol)));
-            if (branch.isBlank()) continue;
-            if (INVALID_BRANCH.stream().anyMatch(branch::contains)) continue;
+            String normalizedBranch = BranchNormalizeUtil.normalizeBranch(formatter.formatCellValue(row.getCell(branchCol)));
+            if (normalizedBranch.isBlank()) continue;
+            if (INVALID_BRANCH.stream().anyMatch(normalizedBranch::contains)) continue;
+            String branch = aliasMap.getOrDefault(normalizedBranch, normalizedBranch);
+            if (!canonicalBranches.contains(branch)) {
+                throw new IllegalArgumentException("未知网点: " + normalizedBranch + "（来源文件: " + sourceFile + "），请在 branch_alias/branch_def 维护映射后重试");
+            }
 
             for (Map.Entry<Integer, String> e : metricByCol.entrySet()) {
                 int c = e.getKey();
@@ -157,20 +163,6 @@ public class IngestService {
         return rows;
     }
 
-    
-    private String normalizeBranch(String raw){
-        if(raw==null) return "";
-        String b = TextCleanUtil.cleanText(raw);
-        if (b == null || b.isBlank()) return "";
-        // drop common suffixes / noise
-        b = b.replaceAll("\\s+",""); // remove internal spaces
-        b = b.replace("网点",""); // avoid accidental headers
-        // unify: 汉街分理处 -> 汉街 ; 库沟支行 -> 库沟
-        b = b.replaceAll("(分理处|支行|营业部)$", "");
-        // cleanup duplicated punctuation
-        b = b.replaceAll("[\\u3000\\s]+", "");
-        return b;
-    }
 
     private int detectHeaderDepth(Sheet sheet, DataFormatter formatter) {
         int max = Math.min(12, sheet.getLastRowNum());

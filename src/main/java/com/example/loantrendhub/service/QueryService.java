@@ -3,6 +3,7 @@ package com.example.loantrendhub.service;
 import com.example.loantrendhub.model.*;
 import com.example.loantrendhub.repo.FactRepo;
 import com.example.loantrendhub.util.DateUtil;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -11,24 +12,17 @@ import java.util.stream.Collectors;
 
 @Service
 public class QueryService {
-    private static String normalizeBranch(String raw){
-        if(raw==null) return "";
-        String b = raw.trim();
-        b = b.replace('\u00A0',' ').replace('\u3000',' ').trim();
-        if (b.endsWith("分理处")) {
-            b = b.substring(0, b.length() - "分理处".length()).trim();
-        }
-        b = b.replaceAll("\\s+", " ");
-        return b;
-    }
 
     private static final double EPSILON = 1e-9;
     private final FactRepo factRepo;
     private final MetricService metricService;
+    private final boolean fillMissingWithZero;
 
-    public QueryService(FactRepo factRepo, MetricService metricService) {
+    public QueryService(FactRepo factRepo, MetricService metricService,
+                        @Value("${app.query.fill-missing-with-zero:true}") boolean fillMissingWithZero) {
         this.factRepo = factRepo;
         this.metricService = metricService;
+        this.fillMissingWithZero = fillMissingWithZero;
     }
 
     public Map<String, Object> dateRange() {
@@ -46,14 +40,8 @@ public class QueryService {
     public List<String> scopes() { return factRepo.findScopes(); }
 
     public List<String> branches(String scope) {
-    // 从事实表取网点，但要归一化并去重（避免“汉街/汉街分理处”重复）
-    return factRepo.findBranches(DateUtil.normalizeScope(scope)).stream()
-            .map(QueryService::normalizeBranch)
-            .filter(s -> s != null && !s.trim().isEmpty())
-            .distinct()
-            .sorted()
-            .toList();
-}
+        return factRepo.findBranches(DateUtil.normalizeScope(scope));
+    }
     public Map<String, Object> branchDiagnostics(String scope) {
         return factRepo.branchDiagnostics(DateUtil.normalizeScope(scope));
     }
@@ -65,12 +53,7 @@ public class QueryService {
             scopes = List.of("PHY", "ADJ");
         }
 
-        List<String> cleanedBranches = factRepo.findAllBranches().stream()
-                .map(QueryService::normalizeBranch)
-                .filter(s -> s != null && !s.isBlank())
-                .distinct()
-                .sorted()
-                .toList();
+        List<String> cleanedBranches = factRepo.findAllBranches();
 
         return Map.of(
                 "scopes", scopes,
@@ -96,7 +79,11 @@ public class QueryService {
         for (FactRow row : rows) {
             Integer xi = metricIdx.get(row.metric());
             Integer yi = branchIdx.get(row.branch());
-            if (xi == null || yi == null || row.val() == null) continue;
+            if (xi == null || yi == null) continue;
+            if (row.val() == null) {
+                data.add(List.of(xi, yi, null));
+                continue;
+            }
 
             double v = row.val();
             data.add(List.of(xi, yi, v));
@@ -124,6 +111,11 @@ public class QueryService {
                                             Map<String, MetricDef> defs) {
         List<FactRow> sourceRows = factRepo.findByDateScopeMetrics(date, scope, metrics);
         Map<String, FactRow> merged = new LinkedHashMap<>();
+        for (String metric : metrics) {
+            for (String branch : branches) {
+                merged.put(metric + "#" + branch, new FactRow(date, scope, branch, metric, fillMissingWithZero ? 0d : null, "FILL_DEFAULT"));
+            }
+        }
         for (FactRow row : sourceRows) {
             merged.put(row.metric() + "#" + row.branch(), row);
         }
