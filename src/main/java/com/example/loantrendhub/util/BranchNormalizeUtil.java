@@ -1,32 +1,30 @@
 package com.example.loantrendhub.util;
 
 public final class BranchNormalizeUtil {
-    private BranchNormalizeUtil() {}
+    private BranchNormalizeUtil() {
+    }
 
-    public record BranchNormalized(String displayCandidate, String normKey) {}
+    public record BranchNormalized(String displayCandidate, String normKey) {
+    }
 
     public static BranchNormalized normalize(String raw) {
         if (raw == null) {
             return new BranchNormalized("", "");
         }
-        String cleaned = TextCleanUtil.cleanText(raw);
-        if (cleaned == null) {
-            return new BranchNormalized("", "");
-        }
 
-        String display = cleaned
+        String display = raw
                 .replace('\u3000', ' ')
                 .replace('\u00A0', ' ')
                 .replace("\uFEFF", "")
-                .replaceAll("[\u200B\u200C\u200D\u2060\t\r\n]", "")
-                .replace('（', '(')
-                .replace('）', ')')
-                .replace('【', '(')
-                .replace('】', ')')
-                .replace('－', '-')
-                .replace('—', '-')
-                .replace('–', '-')
-                .replace('―', '-')
+                .replace("\r", " ")
+                .replace("\n", " ")
+                .replace("\t", " ")
+                .replace("\u200B", "")
+                .replace("\u200C", "")
+                .replace("\u200D", "")
+                .replace("\u2060", "")
+                .replace('\u2014', '-')
+                .replace('\u2013', '-')
                 .replaceAll("\\s+", " ")
                 .trim();
 
@@ -34,13 +32,8 @@ public final class BranchNormalizeUtil {
             return new BranchNormalized("", "");
         }
 
-        display = display
-                .replace("營業部", "营业部")
-                .replace("經營中心", "经营中心")
-                .replace("分公司", "公司");
-
         String normKey = display
-                .replaceAll("[()\\-\\s]", "")
+                .replaceAll("[\\s\\-()\\uFF08\\uFF09]", "")
                 .trim();
 
         return new BranchNormalized(display, normKey);

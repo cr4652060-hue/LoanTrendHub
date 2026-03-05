@@ -1,96 +1,173 @@
-CREATE TABLE IF NOT EXISTS fact_metric_daily (
-                                                 id BIGINT PRIMARY KEY AUTO_INCREMENT,
-                                                 biz_date DATE NOT NULL,
-                                                 scope VARCHAR(50) NOT NULL,
-                                                 branch VARCHAR(100) NOT NULL,
-                                                 metric VARCHAR(100) NOT NULL,
-                                                 val DECIMAL(20,4) NOT NULL,
-                                                 source_file VARCHAR(255),
-                                                 raw_branch VARCHAR(120) NULL,
-                                                 norm_branch_key VARCHAR(120) NULL,
-                                                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                                 UNIQUE KEY uk_biz_scope_branch_metric (biz_date, scope, branch, metric),
-                                                 KEY idx_biz_date (biz_date),
-                                                 KEY idx_scope (scope),
-                                                 KEY idx_branch (branch),
-                                                 KEY idx_metric (metric),
-                                                 KEY idx_norm_branch_key (norm_branch_key)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS metric_def (
-                                          metric VARCHAR(100) PRIMARY KEY,
-                                          name VARCHAR(255) NOT NULL,
-                                          unit VARCHAR(32) NOT NULL,
-                                          kind VARCHAR(16) NOT NULL,
-                                          base_metric VARCHAR(100)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+SET NAMES utf8mb4;
 
 CREATE TABLE IF NOT EXISTS branch_def (
-                                          branch VARCHAR(100) PRIMARY KEY,
-                                          sort_no INT NOT NULL,
-                                          enabled TINYINT NOT NULL DEFAULT 1,
-                                          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    branch VARCHAR(100) PRIMARY KEY,
+    sort_no INT NOT NULL,
+    enabled TINYINT NOT NULL DEFAULT 1,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS branch_alias (
-                                            raw_branch VARCHAR(120) PRIMARY KEY,
-                                            canon_branch VARCHAR(100) NOT NULL,
-                                            norm_key VARCHAR(120) NOT NULL,
-                                            enabled TINYINT NOT NULL DEFAULT 1,
-                                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                            UNIQUE KEY uk_branch_alias_norm_key (norm_key),
-                                            KEY idx_branch_alias_canon (canon_branch),
-                                            CONSTRAINT fk_branch_alias_canon FOREIGN KEY (canon_branch) REFERENCES branch_def(branch)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    raw_branch VARCHAR(120) PRIMARY KEY,
+    canon_branch VARCHAR(100) NOT NULL,
+    norm_key VARCHAR(120) NOT NULL,
+    enabled TINYINT NOT NULL DEFAULT 1,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_branch_alias_norm (norm_key),
+    KEY idx_branch_alias_canon (canon_branch)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS unknown_branch_log (
-                                                  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-                                                  raw_branch VARCHAR(120) NOT NULL,
-                                                  norm_key VARCHAR(120) NOT NULL,
-                                                  source_file VARCHAR(255),
-                                                  row_no INT,
-                                                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                                  KEY idx_unknown_norm_key (norm_key),
-                                                  KEY idx_unknown_source (source_file)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS metric_def (
+    metric VARCHAR(100) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    unit VARCHAR(32) NOT NULL,
+    kind VARCHAR(16) NOT NULL,
+    base_metric VARCHAR(100)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-INSERT IGNORE INTO metric_def(metric, name, unit, kind, base_metric) VALUES
-                                                                         ('CNT_TOTAL', '户数', '户', 'LEVEL', NULL),
-                                                                         ('BAL_TOTAL', '余额', '万元', 'LEVEL', NULL),
-                                                                         ('DOD_CNT', '较上日-户数', '户', 'DELTA', 'CNT_TOTAL'),
-                                                                         ('DOD_BAL', '较上日-余额', '万元', 'DELTA', 'BAL_TOTAL'),
-                                                                         ('MOM_CNT', '较上月-户数', '户', 'DELTA', 'CNT_TOTAL'),
-                                                                         ('MOM_BAL', '较上月-余额', '万元', 'DELTA', 'BAL_TOTAL'),
-                                                                         ('BOY_CNT', '较年初-户数', '户', 'DELTA', 'CNT_TOTAL'),
-                                                                         ('BOY_BAL', '较年初-余额', '万元', 'DELTA', 'BAL_TOTAL'),
-                                                                         ('Y2M_CNT', '增量较同期-户数', '户', 'DELTA', 'CNT_TOTAL'),
-                                                                         ('Y2M_BAL', '增量较同期-余额', '万元', 'DELTA', 'BAL_TOTAL'),
-                                                                         ('GR_CNT', '增幅-户数', '%', 'RATE', 'CNT_TOTAL'),
-                                                                         ('GR_BAL', '增幅-余额', '%', 'RATE', 'BAL_TOTAL'),
-                                                                         ('CALC_DOD_RATE_CNT', '系统日环比-户数', '%', 'RATE', 'CNT_TOTAL'),
-                                                                         ('CALC_DOD_RATE_BAL', '系统日环比-余额', '%', 'RATE', 'BAL_TOTAL'),
-                                                                         ('CALC_MTD_RATE_CNT', '系统月初以来-户数', '%', 'RATE', 'CNT_TOTAL'),
-                                                                         ('CALC_MTD_RATE_BAL', '系统月初以来-余额', '%', 'RATE', 'BAL_TOTAL'),
-                                                                         ('CALC_YTD_RATE_CNT', '系统年初以来-户数', '%', 'RATE', 'CNT_TOTAL'),
-                                                                         ('CALC_YTD_RATE_BAL', '系统年初以来-余额', '%', 'RATE', 'BAL_TOTAL');
+CREATE TABLE IF NOT EXISTS fact_metric_daily (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    biz_date DATE NOT NULL,
+    scope VARCHAR(20) NOT NULL,
+    branch VARCHAR(100) NOT NULL,
+    metric VARCHAR(100) NOT NULL,
+    val DECIMAL(20,4) NOT NULL,
+    source_file VARCHAR(255),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_fact_daily (biz_date, scope, branch, metric),
+    KEY idx_biz_date (biz_date),
+    KEY idx_scope (scope),
+    KEY idx_branch (branch),
+    KEY idx_metric (metric)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-INSERT IGNORE INTO branch_def(branch, enabled, sort_no) VALUES
-                                                            ('营业部',1,1),('界湖',1,2),('大庄',1,3),('张庄',1,4),('依汶',1,5),('马牧池',1,6),('岸堤',1,7),('孙祖',1,8),('双喉',1,9),('青驼',1,10),
-                                                            ('砖埠',1,11),('葛沟',1,12),('杨坡',1,13),('蒲汪',1,14),('湖头',1,15),('苏村',1,16),('铜井',1,17),('辛集',1,18),('朱家里庄',1,19),('中高湖',1,20),
-                                                            ('岱庄',1,21),('高里',1,22),('河阳',1,23),('大王庄',1,24),('东张哨',1,25),('库沟',1,26),('城区',1,27),('开发区',1,28),('小微贷',1,29),('小微贷-房贷',1,30),
-                                                            ('府前',1,31),('汉街',1,32),('才山',1,33),('公司',1,34),('经营中心',1,35);
+CREATE TABLE IF NOT EXISTS import_reject (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    source_file VARCHAR(255),
+    row_no INT,
+    raw_branch VARCHAR(120) NOT NULL,
+    norm_key VARCHAR(120) NOT NULL,
+    reason VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_import_reject_source (source_file),
+    KEY idx_import_reject_norm (norm_key),
+    KEY idx_import_reject_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-INSERT IGNORE INTO branch_alias(raw_branch, canon_branch, norm_key, enabled) VALUES
-                                                                                 ('营业部','营业部','营业部',1),('界湖','界湖','界湖',1),('大庄','大庄','大庄',1),('张庄','张庄','张庄',1),('依汶','依汶','依汶',1),('马牧池','马牧池','马牧池',1),
-                                                                                 ('岸堤','岸堤','岸堤',1),('孙祖','孙祖','孙祖',1),('双喉','双喉','双喉',1),('双堠','双喉','双堠',1),('青驼','青驼','青驼',1),('砖埠','砖埠','砖埠',1),('葛沟','葛沟','葛沟',1),
-                                                                                 ('杨坡','杨坡','杨坡',1),('蒲汪','蒲汪','蒲汪',1),('湖头','湖头','湖头',1),('苏村','苏村','苏村',1),('铜井','铜井','铜井',1),('辛集','辛集','辛集',1),
-                                                                                 ('朱家里庄','朱家里庄','朱家里庄',1),('中高湖','中高湖','中高湖',1),('岱庄','岱庄','岱庄',1),('高里','高里','高里',1),('河阳','河阳','河阳',1),('大王庄','大王庄','大王庄',1),
-                                                                                 ('东张哨','东张哨','东张哨',1),(' 东张哨','东张哨','东张哨',1),('东张哨 ','东张哨','东张哨',1),('东张哨　','东张哨','东张哨',1),('东张哨\r','东张哨','东张哨',1),
-                                                                                 ('库沟','库沟','库沟',1),('城区','城区','城区',1),('开发区','开发区','开发区',1),('小微贷','小微贷','小微贷',1),('小微贷房贷','小微贷-房贷','小微贷房贷',1),
-                                                                                 ('小微贷-房贷','小微贷-房贷','小微贷房贷',1),('府前','府前','府前',1),('汉街','汉街','汉街',1),('才山','才山','才山',1),('公司','公司','公司',1),
-                                                                                 ('公司业务部','公司','公司业务部',1),('经营中心','经营中心','经营中心',1),('资产经营中心','经营中心','资产经营中心',1),('小微贷营销中心','小微贷','小微贷营销中心',1);
+INSERT INTO metric_def(metric, name, unit, kind, base_metric) VALUES
+    ('CNT_TOTAL', CONVERT(0xE688B7E695B0 USING utf8mb4), CONVERT(0xE688B7 USING utf8mb4), 'LEVEL', NULL),
+    ('BAL_TOTAL', CONVERT(0xE4BD99E9A29D USING utf8mb4), CONVERT(0xE4B887E58583 USING utf8mb4), 'LEVEL', NULL),
+    ('DOD_CNT', CONVERT(0xE8BE83E4B88AE697A5E688B7E695B0 USING utf8mb4), CONVERT(0xE688B7 USING utf8mb4), 'DELTA', 'CNT_TOTAL'),
+    ('DOD_BAL', CONVERT(0xE8BE83E4B88AE697A5E4BD99E9A29D USING utf8mb4), CONVERT(0xE4B887E58583 USING utf8mb4), 'DELTA', 'BAL_TOTAL'),
+    ('MOM_CNT', CONVERT(0xE8BE83E4B88AE69C88E688B7E695B0 USING utf8mb4), CONVERT(0xE688B7 USING utf8mb4), 'DELTA', 'CNT_TOTAL'),
+    ('MOM_BAL', CONVERT(0xE8BE83E4B88AE69C88E4BD99E9A29D USING utf8mb4), CONVERT(0xE4B887E58583 USING utf8mb4), 'DELTA', 'BAL_TOTAL'),
+    ('BOY_CNT', CONVERT(0xE8BE83E5B9B4E5889DE688B7E695B0 USING utf8mb4), CONVERT(0xE688B7 USING utf8mb4), 'DELTA', 'CNT_TOTAL'),
+    ('BOY_BAL', CONVERT(0xE8BE83E5B9B4E5889DE4BD99E9A29D USING utf8mb4), CONVERT(0xE4B887E58583 USING utf8mb4), 'DELTA', 'BAL_TOTAL'),
+    ('Y2M_CNT', CONVERT(0xE5A29EE9878FE8BE83E5908CE69C9FE688B7E695B0 USING utf8mb4), CONVERT(0xE688B7 USING utf8mb4), 'DELTA', 'CNT_TOTAL'),
+    ('Y2M_BAL', CONVERT(0xE5A29EE9878FE8BE83E5908CE69C9FE4BD99E9A29D USING utf8mb4), CONVERT(0xE4B887E58583 USING utf8mb4), 'DELTA', 'BAL_TOTAL'),
+    ('GR_CNT', CONVERT(0xE5A29EE5B9852DE688B7E695B0 USING utf8mb4), CONVERT(0x25 USING utf8mb4), 'RATE', 'CNT_TOTAL'),
+    ('GR_BAL', CONVERT(0xE5A29EE5B9852DE4BD99E9A29D USING utf8mb4), CONVERT(0x25 USING utf8mb4), 'RATE', 'BAL_TOTAL'),
+    ('CALC_DOD_RATE_CNT', CONVERT(0xE7B3BBE7BB9FE697A5E78EAFE6AF942DE688B7E695B0 USING utf8mb4), CONVERT(0x25 USING utf8mb4), 'RATE', 'CNT_TOTAL'),
+    ('CALC_DOD_RATE_BAL', CONVERT(0xE7B3BBE7BB9FE697A5E78EAFE6AF942DE4BD99E9A29D USING utf8mb4), CONVERT(0x25 USING utf8mb4), 'RATE', 'BAL_TOTAL'),
+    ('CALC_MTD_RATE_CNT', CONVERT(0xE7B3BBE7BB9FE69C88E5889DE4BBA5E69DA52DE688B7E695B0 USING utf8mb4), CONVERT(0x25 USING utf8mb4), 'RATE', 'CNT_TOTAL'),
+    ('CALC_MTD_RATE_BAL', CONVERT(0xE7B3BBE7BB9FE69C88E5889DE4BBA5E69DA52DE4BD99E9A29D USING utf8mb4), CONVERT(0x25 USING utf8mb4), 'RATE', 'BAL_TOTAL'),
+    ('CALC_YTD_RATE_CNT', CONVERT(0xE7B3BBE7BB9FE5B9B4E5889DE4BBA5E69DA52DE688B7E695B0 USING utf8mb4), CONVERT(0x25 USING utf8mb4), 'RATE', 'CNT_TOTAL'),
+    ('CALC_YTD_RATE_BAL', CONVERT(0xE7B3BBE7BB9FE5B9B4E5889DE4BBA5E69DA52DE4BD99E9A29D USING utf8mb4), CONVERT(0x25 USING utf8mb4), 'RATE', 'BAL_TOTAL')
+ON DUPLICATE KEY UPDATE
+    name = VALUES(name),
+    unit = VALUES(unit),
+    kind = VALUES(kind),
+    base_metric = VALUES(base_metric);
 
-UPDATE fact_metric_daily f
-    JOIN branch_alias a ON f.norm_branch_key = a.norm_key AND a.enabled = 1
-SET f.branch = a.canon_branch
-WHERE f.branch <> a.canon_branch;
+INSERT INTO branch_def(branch, enabled, sort_no) VALUES
+    (CONVERT(0xE890A5E4B89AE983A8 USING utf8mb4), 1, 1),
+    (CONVERT(0xE7958CE6B996 USING utf8mb4), 1, 2),
+    (CONVERT(0xE5A4A7E5BA84 USING utf8mb4), 1, 3),
+    (CONVERT(0xE5BCA0E5BA84 USING utf8mb4), 1, 4),
+    (CONVERT(0xE4BE9DE6B1B6 USING utf8mb4), 1, 5),
+    (CONVERT(0xE9A9ACE789A7E6B1A0 USING utf8mb4), 1, 6),
+    (CONVERT(0xE5B2B8E5A0A4 USING utf8mb4), 1, 7),
+    (CONVERT(0xE5AD99E7A596 USING utf8mb4), 1, 8),
+    (CONVERT(0xE58F8CE5A0A0 USING utf8mb4), 1, 9),
+    (CONVERT(0xE99D92E9A9BC USING utf8mb4), 1, 10),
+    (CONVERT(0xE7A096E59FA0 USING utf8mb4), 1, 11),
+    (CONVERT(0xE8919BE6B29F USING utf8mb4), 1, 12),
+    (CONVERT(0xE69DA8E59DA1 USING utf8mb4), 1, 13),
+    (CONVERT(0xE892B2E6B1AA USING utf8mb4), 1, 14),
+    (CONVERT(0xE6B996E5A4B4 USING utf8mb4), 1, 15),
+    (CONVERT(0xE88B8FE69D91 USING utf8mb4), 1, 16),
+    (CONVERT(0xE9939CE4BA95 USING utf8mb4), 1, 17),
+    (CONVERT(0xE8BE9BE99B86 USING utf8mb4), 1, 18),
+    (CONVERT(0xE69CB1E5AEB6E9878CE5BA84 USING utf8mb4), 1, 19),
+    (CONVERT(0xE4B8ADE9AB98E6B996 USING utf8mb4), 1, 20),
+    (CONVERT(0xE5B2B1E5BA84 USING utf8mb4), 1, 21),
+    (CONVERT(0xE9AB98E9878C USING utf8mb4), 1, 22),
+    (CONVERT(0xE6B2B3E998B3 USING utf8mb4), 1, 23),
+    (CONVERT(0xE5A4A7E78E8BE5BA84 USING utf8mb4), 1, 24),
+    (CONVERT(0xE4B89CE5BCA0E593A8 USING utf8mb4), 1, 25),
+    (CONVERT(0xE5BA93E6B29F USING utf8mb4), 1, 26),
+    (CONVERT(0xE59F8EE58CBA USING utf8mb4), 1, 27),
+    (CONVERT(0xE5BC80E58F91E58CBA USING utf8mb4), 1, 28),
+    (CONVERT(0xE5B08FE5BEAEE8B4B7 USING utf8mb4), 1, 29),
+    (CONVERT(0xE5B08FE5BEAEE8B4B7E688BFE8B4B7 USING utf8mb4), 1, 30),
+    (CONVERT(0xE5BA9CE5898D USING utf8mb4), 1, 31),
+    (CONVERT(0xE6B189E8A197 USING utf8mb4), 1, 32),
+    (CONVERT(0xE6898DE5B1B1 USING utf8mb4), 1, 33),
+    (CONVERT(0xE585ACE58FB8 USING utf8mb4), 1, 34),
+    (CONVERT(0xE7BB8FE890A5E4B8ADE5BF83 USING utf8mb4), 1, 35)
+ON DUPLICATE KEY UPDATE
+    enabled = VALUES(enabled),
+    sort_no = VALUES(sort_no);
+
+INSERT INTO branch_alias(raw_branch, canon_branch, norm_key, enabled) VALUES
+    (CONVERT(0xE890A5E4B89AE983A8 USING utf8mb4), CONVERT(0xE890A5E4B89AE983A8 USING utf8mb4), CONVERT(0xE890A5E4B89AE983A8 USING utf8mb4), 1),
+    (CONVERT(0xE7958CE6B996 USING utf8mb4), CONVERT(0xE7958CE6B996 USING utf8mb4), CONVERT(0xE7958CE6B996 USING utf8mb4), 1),
+    (CONVERT(0xE5A4A7E5BA84 USING utf8mb4), CONVERT(0xE5A4A7E5BA84 USING utf8mb4), CONVERT(0xE5A4A7E5BA84 USING utf8mb4), 1),
+    (CONVERT(0xE5BCA0E5BA84 USING utf8mb4), CONVERT(0xE5BCA0E5BA84 USING utf8mb4), CONVERT(0xE5BCA0E5BA84 USING utf8mb4), 1),
+    (CONVERT(0xE4BE9DE6B1B6 USING utf8mb4), CONVERT(0xE4BE9DE6B1B6 USING utf8mb4), CONVERT(0xE4BE9DE6B1B6 USING utf8mb4), 1),
+    (CONVERT(0xE9A9ACE789A7E6B1A0 USING utf8mb4), CONVERT(0xE9A9ACE789A7E6B1A0 USING utf8mb4), CONVERT(0xE9A9ACE789A7E6B1A0 USING utf8mb4), 1),
+    (CONVERT(0xE5B2B8E5A0A4 USING utf8mb4), CONVERT(0xE5B2B8E5A0A4 USING utf8mb4), CONVERT(0xE5B2B8E5A0A4 USING utf8mb4), 1),
+    (CONVERT(0xE5AD99E7A596 USING utf8mb4), CONVERT(0xE5AD99E7A596 USING utf8mb4), CONVERT(0xE5AD99E7A596 USING utf8mb4), 1),
+    (CONVERT(0xE58F8CE5A0A0 USING utf8mb4), CONVERT(0xE58F8CE5A0A0 USING utf8mb4), CONVERT(0xE58F8CE5A0A0 USING utf8mb4), 1),
+    (CONVERT(0xE99D92E9A9BC USING utf8mb4), CONVERT(0xE99D92E9A9BC USING utf8mb4), CONVERT(0xE99D92E9A9BC USING utf8mb4), 1),
+    (CONVERT(0xE7A096E59FA0 USING utf8mb4), CONVERT(0xE7A096E59FA0 USING utf8mb4), CONVERT(0xE7A096E59FA0 USING utf8mb4), 1),
+    (CONVERT(0xE8919BE6B29F USING utf8mb4), CONVERT(0xE8919BE6B29F USING utf8mb4), CONVERT(0xE8919BE6B29F USING utf8mb4), 1),
+    (CONVERT(0xE69DA8E59DA1 USING utf8mb4), CONVERT(0xE69DA8E59DA1 USING utf8mb4), CONVERT(0xE69DA8E59DA1 USING utf8mb4), 1),
+    (CONVERT(0xE892B2E6B1AA USING utf8mb4), CONVERT(0xE892B2E6B1AA USING utf8mb4), CONVERT(0xE892B2E6B1AA USING utf8mb4), 1),
+    (CONVERT(0xE6B996E5A4B4 USING utf8mb4), CONVERT(0xE6B996E5A4B4 USING utf8mb4), CONVERT(0xE6B996E5A4B4 USING utf8mb4), 1),
+    (CONVERT(0xE88B8FE69D91 USING utf8mb4), CONVERT(0xE88B8FE69D91 USING utf8mb4), CONVERT(0xE88B8FE69D91 USING utf8mb4), 1),
+    (CONVERT(0xE9939CE4BA95 USING utf8mb4), CONVERT(0xE9939CE4BA95 USING utf8mb4), CONVERT(0xE9939CE4BA95 USING utf8mb4), 1),
+    (CONVERT(0xE8BE9BE99B86 USING utf8mb4), CONVERT(0xE8BE9BE99B86 USING utf8mb4), CONVERT(0xE8BE9BE99B86 USING utf8mb4), 1),
+    (CONVERT(0xE69CB1E5AEB6E9878CE5BA84 USING utf8mb4), CONVERT(0xE69CB1E5AEB6E9878CE5BA84 USING utf8mb4), CONVERT(0xE69CB1E5AEB6E9878CE5BA84 USING utf8mb4), 1),
+    (CONVERT(0xE4B8ADE9AB98E6B996 USING utf8mb4), CONVERT(0xE4B8ADE9AB98E6B996 USING utf8mb4), CONVERT(0xE4B8ADE9AB98E6B996 USING utf8mb4), 1),
+    (CONVERT(0xE5B2B1E5BA84 USING utf8mb4), CONVERT(0xE5B2B1E5BA84 USING utf8mb4), CONVERT(0xE5B2B1E5BA84 USING utf8mb4), 1),
+    (CONVERT(0xE9AB98E9878C USING utf8mb4), CONVERT(0xE9AB98E9878C USING utf8mb4), CONVERT(0xE9AB98E9878C USING utf8mb4), 1),
+    (CONVERT(0xE6B2B3E998B3 USING utf8mb4), CONVERT(0xE6B2B3E998B3 USING utf8mb4), CONVERT(0xE6B2B3E998B3 USING utf8mb4), 1),
+    (CONVERT(0xE5A4A7E78E8BE5BA84 USING utf8mb4), CONVERT(0xE5A4A7E78E8BE5BA84 USING utf8mb4), CONVERT(0xE5A4A7E78E8BE5BA84 USING utf8mb4), 1),
+    (CONVERT(0xE4B89CE5BCA0E593A8 USING utf8mb4), CONVERT(0xE4B89CE5BCA0E593A8 USING utf8mb4), CONVERT(0xE4B89CE5BCA0E593A8 USING utf8mb4), 1),
+    (CONVERT(0xE5BA93E6B29F USING utf8mb4), CONVERT(0xE5BA93E6B29F USING utf8mb4), CONVERT(0xE5BA93E6B29F USING utf8mb4), 1),
+    (CONVERT(0xE59F8EE58CBA USING utf8mb4), CONVERT(0xE59F8EE58CBA USING utf8mb4), CONVERT(0xE59F8EE58CBA USING utf8mb4), 1),
+    (CONVERT(0xE5BC80E58F91E58CBA USING utf8mb4), CONVERT(0xE5BC80E58F91E58CBA USING utf8mb4), CONVERT(0xE5BC80E58F91E58CBA USING utf8mb4), 1),
+    (CONVERT(0xE5B08FE5BEAEE8B4B7 USING utf8mb4), CONVERT(0xE5B08FE5BEAEE8B4B7 USING utf8mb4), CONVERT(0xE5B08FE5BEAEE8B4B7 USING utf8mb4), 1),
+    (CONVERT(0xE5B08FE5BEAEE8B4B7E688BFE8B4B7 USING utf8mb4), CONVERT(0xE5B08FE5BEAEE8B4B7E688BFE8B4B7 USING utf8mb4), CONVERT(0xE5B08FE5BEAEE8B4B7E688BFE8B4B7 USING utf8mb4), 1),
+    (CONVERT(0xE5BA9CE5898D USING utf8mb4), CONVERT(0xE5BA9CE5898D USING utf8mb4), CONVERT(0xE5BA9CE5898D USING utf8mb4), 1),
+    (CONVERT(0xE6B189E8A197 USING utf8mb4), CONVERT(0xE6B189E8A197 USING utf8mb4), CONVERT(0xE6B189E8A197 USING utf8mb4), 1),
+    (CONVERT(0xE6898DE5B1B1 USING utf8mb4), CONVERT(0xE6898DE5B1B1 USING utf8mb4), CONVERT(0xE6898DE5B1B1 USING utf8mb4), 1),
+    (CONVERT(0xE585ACE58FB8 USING utf8mb4), CONVERT(0xE585ACE58FB8 USING utf8mb4), CONVERT(0xE585ACE58FB8 USING utf8mb4), 1),
+    (CONVERT(0xE7BB8FE890A5E4B8ADE5BF83 USING utf8mb4), CONVERT(0xE7BB8FE890A5E4B8ADE5BF83 USING utf8mb4), CONVERT(0xE7BB8FE890A5E4B8ADE5BF83 USING utf8mb4), 1),
+    (CONVERT(0x20E4B89CE5BCA0E593A8 USING utf8mb4), CONVERT(0xE4B89CE5BCA0E593A8 USING utf8mb4), CONVERT(0xE4B89CE5BCA0E593A8 USING utf8mb4), 1),
+    (CONVERT(0xE4B89CE5BCA0E593A820 USING utf8mb4), CONVERT(0xE4B89CE5BCA0E593A8 USING utf8mb4), CONVERT(0xE4B89CE5BCA0E593A8 USING utf8mb4), 1),
+    (CONVERT(0xE4B89CE5BCA0E593A8E38080 USING utf8mb4), CONVERT(0xE4B89CE5BCA0E593A8 USING utf8mb4), CONVERT(0xE4B89CE5BCA0E593A8 USING utf8mb4), 1),
+    (CONVERT(0xE4B89CE5BCA0E593A80D USING utf8mb4), CONVERT(0xE4B89CE5BCA0E593A8 USING utf8mb4), CONVERT(0xE4B89CE5BCA0E593A8 USING utf8mb4), 1),
+    (CONVERT(0xE4B89CE5BCA0E593A80A USING utf8mb4), CONVERT(0xE4B89CE5BCA0E593A8 USING utf8mb4), CONVERT(0xE4B89CE5BCA0E593A8 USING utf8mb4), 1),
+    (CONVERT(0xE58F8CE5A086 USING utf8mb4), CONVERT(0xE58F8CE5A0A0 USING utf8mb4), CONVERT(0xE58F8CE5A086 USING utf8mb4), 1),
+    (CONVERT(0xE585ACE58FB8E4B89AE58AA1E983A8 USING utf8mb4), CONVERT(0xE585ACE58FB8 USING utf8mb4), CONVERT(0xE585ACE58FB8E4B89AE58AA1E983A8 USING utf8mb4), 1),
+    (CONVERT(0xE8B584E4BAA7E7BB8FE890A5E4B8ADE5BF83 USING utf8mb4), CONVERT(0xE7BB8FE890A5E4B8ADE5BF83 USING utf8mb4), CONVERT(0xE8B584E4BAA7E7BB8FE890A5E4B8ADE5BF83 USING utf8mb4), 1),
+    (CONVERT(0xE5B08FE5BEAEE8B4B7E890A5E99480E4B8ADE5BF83 USING utf8mb4), CONVERT(0xE5B08FE5BEAEE8B4B7 USING utf8mb4), CONVERT(0xE5B08FE5BEAEE8B4B7E890A5E99480E4B8ADE5BF83 USING utf8mb4), 1),
+    (CONVERT(0xE5B08FE5BEAEE8B4B7EFBC88E688BFE8B4B7EFBC89 USING utf8mb4), CONVERT(0xE5B08FE5BEAEE8B4B7E688BFE8B4B7 USING utf8mb4), CONVERT(0xE5B08FE5BEAEE8B4B7EFBC88E688BFE8B4B7EFBC89 USING utf8mb4), 1),
+    (CONVERT(0xE5B08FE5BEAEE8B4B72DE688BFE8B4B7 USING utf8mb4), CONVERT(0xE5B08FE5BEAEE8B4B7E688BFE8B4B7 USING utf8mb4), CONVERT(0xE5B08FE5BEAEE8B4B7E688BFE8B4B7 USING utf8mb4), 1),
+    (CONVERT(0xE5B08FE5BEAEE8B4B720E688BFE8B4B7 USING utf8mb4), CONVERT(0xE5B08FE5BEAEE8B4B7E688BFE8B4B7 USING utf8mb4), CONVERT(0xE5B08FE5BEAEE8B4B7E688BFE8B4B7 USING utf8mb4), 1)
+ON DUPLICATE KEY UPDATE
+    canon_branch = VALUES(canon_branch),
+    norm_key = VALUES(norm_key),
+    enabled = VALUES(enabled);

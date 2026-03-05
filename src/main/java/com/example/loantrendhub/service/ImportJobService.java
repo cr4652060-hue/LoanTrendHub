@@ -1,6 +1,8 @@
 package com.example.loantrendhub.service;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -12,25 +14,42 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Service
 public class ImportJobService {
     private static final Logger log = LoggerFactory.getLogger(ImportJobService.class);
+
     private final ExecutorService importPool = Executors.newFixedThreadPool(1);
     private final Map<String, JobState> jobs = new ConcurrentHashMap<>();
     private final IngestService ingestService;
+    private final int maxFiles;
 
-    public ImportJobService(IngestService ingestService) {
+    public ImportJobService(IngestService ingestService,
+                            @Value("${app.upload.max-files:200}") int maxFiles) {
         this.ingestService = ingestService;
+        this.maxFiles = maxFiles;
     }
 
     public Map<String, Object> submit(List<MultipartFile> files) throws Exception {
+        if (files == null || files.isEmpty()) {
+            throw new IllegalArgumentException("No files selected");
+        }
+        if (files.size() > maxFiles) {
+            throw new IllegalArgumentException("Too many files in one request. Max=" + maxFiles);
+        }
+
+        List<StoredUpload> stagedFiles = stage(files);
+        if (stagedFiles.isEmpty()) {
+            throw new IllegalArgumentException("No valid upload files after filtering");
+        }
+
         String jobId = UUID.randomUUID().toString();
         JobState state = JobState.pending();
         jobs.put(jobId, state);
 
-        List<StoredUpload> stagedFiles = stage(files);
         state.totalFiles = stagedFiles.size();
         state.status = "RUNNING";
 
@@ -74,6 +93,7 @@ public class ImportJobService {
     private List<StoredUpload> stage(List<MultipartFile> files) throws Exception {
         Path baseDir = Path.of("tmp");
         Files.createDirectories(baseDir);
+
         List<StoredUpload> staged = new ArrayList<>();
         for (MultipartFile file : files) {
             if (file == null || file.isEmpty()) {
@@ -87,7 +107,9 @@ public class ImportJobService {
         return staged;
     }
 
-    public record StoredUpload(String sourceName, Path path) {}
+    public record StoredUpload(String sourceName, Path path) {
+    }
+
     private Throwable rootCause(Throwable throwable) {
         Throwable current = throwable;
         while (current.getCause() != null && current.getCause() != current) {
@@ -95,6 +117,7 @@ public class ImportJobService {
         }
         return current;
     }
+
     private static final class JobState {
         String status;
         int totalFiles;

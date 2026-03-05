@@ -20,8 +20,8 @@ spring:
 
   servlet:
     multipart:
-      max-file-size: 200MB
-      max-request-size: 800MB
+      max-file-size: 20MB
+      max-request-size: 1GB
       file-size-threshold: 2MB
 
 server:
@@ -34,8 +34,8 @@ server:
   tomcat:
     connection-timeout: 60000
     uri-encoding: UTF-8
-    max-http-form-post-size: 838860800
-    max-swallow-size: 838860800
+    max-http-form-post-size: 1073741824
+    max-swallow-size: 1073741824
   error:
     include-message: always
     include-stacktrace: never
@@ -46,5 +46,7 @@ logging:
     com.zaxxer.hikari: INFO
 
 app:
+  upload:
+    max-files: 200
   query:
     fill-missing-with-zero: true
