@@ -7,7 +7,25 @@ public record SeriesResponse(
         String title,
         String unit,
         List<String> x,
-        List<Series> series
+        List<Series> series,
+        List<String> warnings,
+        Meta meta
 ) {
+    public SeriesResponse(String title,
+                          String unit,
+                          List<String> x,
+                          List<Series> series) {
+        this(title, unit, x, series, List.of(), Meta.none(series == null ? 0 : series.size()));
+    }
+
     public record Series(String name, List<Double> y) {}
+
+    public record Meta(int requestedBranches,
+                       int effectiveBranches,
+                       boolean truncated,
+                       int dropped) {
+        public static Meta none(int branches) {
+            return new Meta(branches, branches, false, 0);
+        }
+    }
 }

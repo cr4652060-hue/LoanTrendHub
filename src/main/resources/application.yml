@@ -20,8 +20,8 @@ spring:
 
   servlet:
     multipart:
-      max-file-size: 20MB
-      max-request-size: 1GB
+      max-file-size: 50MB
+      max-request-size: 500MB
       file-size-threshold: 2MB
 
 server:
@@ -35,7 +35,7 @@ server:
     connection-timeout: 60000
     uri-encoding: UTF-8
     max-http-form-post-size: 1073741824
-    max-swallow-size: 1073741824
+    max-swallow-size: -1
   error:
     include-message: always
     include-stacktrace: never
@@ -50,3 +50,5 @@ app:
     max-files: 200
   query:
     fill-missing-with-zero: true
+    max-branch-series: 200
+    max-points: 200000

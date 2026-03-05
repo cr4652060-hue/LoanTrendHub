@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS fact_metric_daily (
     val DECIMAL(20,4) NOT NULL,
     source_file VARCHAR(255),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_fact_daily (biz_date, scope, branch, metric),
+    UNIQUE KEY uk_biz_scope_branch_metric (biz_date, scope, branch, metric),
     KEY idx_biz_date (biz_date),
     KEY idx_scope (scope),
     KEY idx_branch (branch),

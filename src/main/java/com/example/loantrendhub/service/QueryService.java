@@ -2,6 +2,8 @@ package com.example.loantrendhub.service;
 
 import com.example.loantrendhub.model.*;
 import com.example.loantrendhub.repo.FactRepo;
+import com.example.loantrendhub.util.BranchNormalizeUtil;
+import com.example.loantrendhub.util.BranchNormalizer;
 import com.example.loantrendhub.util.DateUtil;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -14,16 +16,21 @@ import java.util.stream.Collectors;
 public class QueryService {
 
     private static final double EPSILON = 1e-9;
-    private static final int MAX_BRANCH_SERIES = 20;
     private final FactRepo factRepo;
     private final MetricService metricService;
     private final boolean fillMissingWithZero;
+    private final int maxBranchSeries;
+    private final int maxPoints;
 
     public QueryService(FactRepo factRepo, MetricService metricService,
-                        @Value("${app.query.fill-missing-with-zero:true}") boolean fillMissingWithZero) {
+                        @Value("${app.query.fill-missing-with-zero:true}") boolean fillMissingWithZero,
+                        @Value("${app.query.max-branch-series:200}") int maxBranchSeries,
+                        @Value("${app.query.max-points:200000}") int maxPoints) {
         this.factRepo = factRepo;
         this.metricService = metricService;
         this.fillMissingWithZero = fillMissingWithZero;
+        this.maxBranchSeries = maxBranchSeries;
+        this.maxPoints = maxPoints;
     }
 
 
@@ -51,7 +58,11 @@ public class QueryService {
 
     public List<String> branches(String scope) {
         ensureMetadataReady();
-        return factRepo.findBranches(DateUtil.normalizeScope(scope));
+        return factRepo.findBranches(DateUtil.normalizeScope(scope)).stream()
+                .map(BranchNormalizeUtil::normalizeDisplay)
+                .filter(v -> v != null && !v.isBlank())
+                .distinct()
+                .toList();
     }
     public Map<String, Object> branchDiagnostics(String scope) {
         return factRepo.branchDiagnostics(DateUtil.normalizeScope(scope));
@@ -180,27 +191,40 @@ public class QueryService {
     }
 
     private SeriesResponse seriesByBranches(String scope, String metric, List<String> branches, String start, String end) {
-        if (branches.size() > MAX_BRANCH_SERIES) {
-            throw new IllegalArgumentException("网点过多，请缩小选择（最多" + MAX_BRANCH_SERIES + "个）");
+        List<String> warnings = new ArrayList<>();
+        List<String> resolvedBranches = normalizeAndResolveBranches(scope, branches, warnings);
+        int requested = resolvedBranches.size();
+
+        if (maxBranchSeries > 0 && resolvedBranches.size() > maxBranchSeries) {
+            int dropped = resolvedBranches.size() - maxBranchSeries;
+            resolvedBranches = resolvedBranches.subList(0, maxBranchSeries);
+            warnings.add("网点数量超过上限，已按配置截断到 " + maxBranchSeries + " 个。已忽略 " + dropped + " 个网点。");
         }
+
         List<String> dates = new ArrayList<>(new TreeSet<>(factRepo.findDates(scope, start, end)));
-        List<FactRow> rows = factRepo.findSeriesByMetric(scope, metric, branches, start, end);
+        List<FactRow> rows = factRepo.findSeriesByMetric(scope, metric, resolvedBranches, start, end);
         MetricDef md = metricService.metricMap().get(metric);
         if (rows.isEmpty() && md != null && "DELTA".equalsIgnoreCase(md.kind()) && md.baseMetric() != null && !md.baseMetric().isBlank()) {
-            rows = buildDeltaRowsFromBase(scope, branches, dates, metric, md.baseMetric(), start, end);
+            rows = buildDeltaRowsFromBase(scope, resolvedBranches, dates, metric, md.baseMetric(), start, end);
         }
         if (rows.isEmpty() && md != null && "RATE".equalsIgnoreCase(md.kind()) && md.baseMetric() != null && !md.baseMetric().isBlank()) {
-            rows = buildRateRowsFromBase(scope, branches, dates, metric, md.baseMetric(), start, end);
+            rows = buildRateRowsFromBase(scope, resolvedBranches, dates, metric, md.baseMetric(), start, end);
         }
+
+        DegradedWindow degraded = degradeRowsIfNeeded(dates, resolvedBranches, rows, warnings, 1);
+        dates = degraded.dates();
+        resolvedBranches = degraded.branches();
+        rows = degraded.rows();
+
         Map<String, Map<String, Double>> byBranch = new LinkedHashMap<>();
-        for (String b : branches) byBranch.put(b, new HashMap<>());
+        for (String b : resolvedBranches) byBranch.put(b, new HashMap<>());
         for (FactRow r : rows) {
             if (r.val() == null) continue;
             byBranch.computeIfAbsent(r.branch(), k -> new HashMap<>()).put(r.bizDate(), r.val());
         }
 
         List<SeriesResponse.Series> series = new ArrayList<>();
-        for (String b : branches) {
+        for (String b : resolvedBranches) {
             Map<String, Double> map = byBranch.getOrDefault(b, Map.of());
             List<Double> y = dates.stream().map(d -> {
                 Double v = map.getOrDefault(d, null);
@@ -209,7 +233,14 @@ public class QueryService {
             series.add(new SeriesResponse.Series(b, y));
         }
         String unit = md == null ? "" : md.unit();
-        return new SeriesResponse("趋势：" + scope + " / " + (md == null ? metric : md.name()), unit, dates, series);
+        return new SeriesResponse(
+                "趋势：" + scope + " / " + (md == null ? metric : md.name()),
+                unit,
+                dates,
+                series,
+                warnings,
+                new SeriesResponse.Meta(requested, resolvedBranches.size(), requested != resolvedBranches.size(), Math.max(0, requested - resolvedBranches.size()))
+        );
     }
     private List<FactRow> buildDeltaRowsFromBase(String scope,
                                                  List<String> branches,
@@ -346,17 +377,23 @@ public class QueryService {
                                        String start,
                                        String end) {
         scope = DateUtil.normalizeScope(scope);
-        if (branches.size() > MAX_BRANCH_SERIES) {
-            throw new IllegalArgumentException("网点过多，请缩小选择（最多" + MAX_BRANCH_SERIES + "个）");
+        List<String> warnings = new ArrayList<>();
+        List<String> resolvedBranches = normalizeAndResolveBranches(scope, branches, warnings);
+        int requested = resolvedBranches.size();
+        if (maxBranchSeries > 0 && resolvedBranches.size() > maxBranchSeries) {
+            int dropped = resolvedBranches.size() - maxBranchSeries;
+            resolvedBranches = resolvedBranches.subList(0, maxBranchSeries);
+            warnings.add("网点数量超过上限，已按配置截断到 " + maxBranchSeries + " 个。已忽略 " + dropped + " 个网点。");
         }
         List<String> dates = new ArrayList<>(new TreeSet<>(factRepo.findDates(scope, start, end)));
-        if (dates.isEmpty()) return new SeriesResponse("增长率：" + scope, "%", List.of(), List.of());
+        if (dates.isEmpty()) return new SeriesResponse("增长率：" + scope, "%", List.of(), List.of(), warnings,
+                new SeriesResponse.Meta(requested, resolvedBranches.size(), requested != resolvedBranches.size(), Math.max(0, requested - resolvedBranches.size())));
         // 拉取两条指标的明细（同一时间窗口）
-        List<FactRow> deltaRows = factRepo.findSeriesByMetric(scope, deltaMetric, branches, start, end);
-        List<FactRow> baseRows  = factRepo.findSeriesByMetric(scope, baseMetric,  branches, start, end);
+        List<FactRow> deltaRows = factRepo.findSeriesByMetric(scope, deltaMetric, resolvedBranches, start, end);
+        List<FactRow> baseRows  = factRepo.findSeriesByMetric(scope, baseMetric,  resolvedBranches, start, end);
         MetricDef deltaDef = metricService.metricMap().get(deltaMetric);
         if (deltaRows.isEmpty() && deltaDef != null && "DELTA".equalsIgnoreCase(deltaDef.kind()) && deltaDef.baseMetric() != null && !deltaDef.baseMetric().isBlank()) {
-            deltaRows = buildDeltaRowsFromBase(scope, branches, dates, deltaMetric, deltaDef.baseMetric(), start, end);
+            deltaRows = buildDeltaRowsFromBase(scope, resolvedBranches, dates, deltaMetric, deltaDef.baseMetric(), start, end);
         }
         Map<String, Map<String, Double>> delta = new HashMap<>();
         for (FactRow r : deltaRows) {
@@ -370,7 +407,11 @@ public class QueryService {
         }
 
         List<SeriesResponse.Series> series = new ArrayList<>();
-        for (String b : branches) {
+        DegradedWindow growthWindow = degradeRowsIfNeeded(dates, resolvedBranches, deltaRows, warnings, 2);
+        dates = growthWindow.dates();
+        resolvedBranches = growthWindow.branches();
+
+        for (String b : resolvedBranches) {
             Map<String, Double> dmap = delta.getOrDefault(b, Map.of());
             Map<String, Double> bmap = base.getOrDefault(b, Map.of());
 
@@ -392,8 +433,65 @@ public class QueryService {
         String t1 = d1 == null ? deltaMetric : d1.name();
         String t2 = d2 == null ? baseMetric : d2.name();
 
-        return new SeriesResponse("增长率：" + scope + "（" + t1 + " ÷ 上期" + t2 + "）", "%", dates, series);
+        return new SeriesResponse("增长率：" + scope + "（" + t1 + " ÷ 上期" + t2 + "）", "%", dates, series, warnings,
+                new SeriesResponse.Meta(requested, resolvedBranches.size(), requested != resolvedBranches.size(), Math.max(0, requested - resolvedBranches.size())));
     }
+
+    private List<String> normalizeAndResolveBranches(String scope, List<String> branches, List<String> warnings) {
+        if (branches == null || branches.isEmpty()) {
+            return List.of();
+        }
+        List<String> dictionary = branches(scope);
+        Map<String, String> normMap = new LinkedHashMap<>();
+        for (String canonical : dictionary) {
+            normMap.put(BranchNormalizeUtil.normalizeBranch(canonical), canonical);
+        }
+        List<String> resolved = new ArrayList<>();
+        for (String branch : branches) {
+            String normalized = BranchNormalizer.normalizeBranch(branch);
+            if (normalized.isBlank()) {
+                continue;
+            }
+            String canonical = normMap.getOrDefault(BranchNormalizeUtil.normalizeBranch(normalized), normalized);
+            resolved.add(canonical);
+        }
+        List<String> deduped = resolved.stream().distinct().toList();
+        if (deduped.size() < resolved.size()) {
+            warnings.add("网点名称存在空格/换行等差异，系统已自动规范并去重。");
+        }
+        return deduped;
+    }
+
+    private DegradedWindow degradeRowsIfNeeded(List<String> dates,
+                                               List<String> branches,
+                                               List<FactRow> rows,
+                                               List<String> warnings,
+                                               int seriesCount) {
+        if (maxPoints <= 0 || dates.isEmpty() || branches.isEmpty()) {
+            return new DegradedWindow(dates, branches, rows);
+        }
+        long estimatedPoints = (long) branches.size() * dates.size() * Math.max(seriesCount, 1);
+        if (estimatedPoints <= maxPoints) {
+            return new DegradedWindow(dates, branches, rows);
+        }
+
+        int dateStep = (int) Math.ceil((double) estimatedPoints / maxPoints);
+        if (dateStep > 1) {
+            Set<String> keptDates = new LinkedHashSet<>();
+            for (int i = 0; i < dates.size(); i += dateStep) {
+                keptDates.add(dates.get(i));
+            }
+            keptDates.add(dates.get(dates.size() - 1));
+            List<String> sampledDates = dates.stream().filter(keptDates::contains).toList();
+            List<FactRow> sampledRows = rows.stream().filter(r -> keptDates.contains(r.bizDate())).toList();
+            long afterPoints = (long) branches.size() * sampledDates.size() * Math.max(seriesCount, 1);
+            warnings.add("数据点过大，已按日期采样(step=" + dateStep + ") 以保障性能。估算点数 " + estimatedPoints + " -> " + afterPoints + "。");
+            return new DegradedWindow(sampledDates, branches, sampledRows);
+        }
+        return new DegradedWindow(dates, branches, rows);
+    }
+
+    private record DegradedWindow(List<String> dates, List<String> branches, List<FactRow> rows) {}
 
     public Map<String, Object> exportReport(String scope, String date, List<String> metrics) {
         scope = DateUtil.normalizeScope(scope);

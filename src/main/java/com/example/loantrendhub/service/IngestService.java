@@ -195,11 +195,13 @@ public class IngestService {
             }
 
             ResolveBranchResult resolved = resolveBranch(rawBranch, displayBranch, normKey, aliasRawMap, aliasNormMap, canonicalBranches);
-            if (resolved.canonBranch() == null) {
+            if (resolved.rejectReason() != null) {
                 unknownCount++;
                 String reason = resolved.rejectReason();
                 factRepo.logImportReject(sourceFile, r + 1, rawBranch == null ? "" : rawBranch, normKey, reason);
-                warnings.add("[REJECT] file=" + sourceFile + " row=" + (r + 1) + " raw='" + rawBranch + "' norm='" + normKey + "' reason=" + reason);
+                warnings.add("[WARN] file=" + sourceFile + " row=" + (r + 1) + " raw='" + rawBranch + "' norm='" + normKey + "' reason=" + reason + " fallback='" + resolved.canonBranch() + "'");
+            }
+            if (resolved.canonBranch() == null || resolved.canonBranch().isBlank()) {
                 continue;
             }
 
@@ -240,10 +242,10 @@ public class IngestService {
             canonical = displayBranch;
         }
         if (canonical == null) {
-            return new ResolveBranchResult(null, "no_alias_mapping");
+            return new ResolveBranchResult(displayBranch, "no_alias_mapping");
         }
         if (!canonicalBranches.contains(canonical)) {
-            return new ResolveBranchResult(null, "canon_branch_not_enabled:" + canonical);
+            return new ResolveBranchResult(canonical, "canon_branch_not_enabled:" + canonical);
         }
         return new ResolveBranchResult(canonical, null);
     }

@@ -42,4 +42,8 @@ public final class BranchNormalizeUtil {
     public static String normalizeBranch(String raw) {
         return normalize(raw).normKey();
     }
+
+    public static String normalizeDisplay(String raw) {
+        return normalize(raw).displayCandidate();
+    }
 }
