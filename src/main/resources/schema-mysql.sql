@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS fact_metric_daily (
                                                  KEY idx_branch (branch),
                                                  KEY idx_metric (metric),
                                                  KEY idx_norm_branch_key (norm_branch_key)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS metric_def (
                                           metric VARCHAR(100) PRIMARY KEY,
@@ -23,24 +23,25 @@ CREATE TABLE IF NOT EXISTS metric_def (
                                           unit VARCHAR(32) NOT NULL,
                                           kind VARCHAR(16) NOT NULL,
                                           base_metric VARCHAR(100)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS branch_def (
                                           branch VARCHAR(100) PRIMARY KEY,
-                                          sort_no INT NOT NULL DEFAULT 0,
+                                          sort_no INT NOT NULL,
                                           enabled TINYINT NOT NULL DEFAULT 1,
                                           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS branch_alias (
-                                            id BIGINT PRIMARY KEY AUTO_INCREMENT,
-                                            alias VARCHAR(120) NOT NULL,
-                                            branch VARCHAR(100) NOT NULL,
+                                            raw_branch VARCHAR(120) PRIMARY KEY,
+                                            canon_branch VARCHAR(100) NOT NULL,
                                             norm_key VARCHAR(120) NOT NULL,
-                                            UNIQUE KEY uk_norm_key (norm_key),
-                                            KEY idx_branch (branch),
-                                            CONSTRAINT fk_alias_branch FOREIGN KEY (branch) REFERENCES branch_def(branch)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                                            enabled TINYINT NOT NULL DEFAULT 1,
+                                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                            UNIQUE KEY uk_branch_alias_norm_key (norm_key),
+                                            KEY idx_branch_alias_canon (canon_branch),
+                                            CONSTRAINT fk_branch_alias_canon FOREIGN KEY (canon_branch) REFERENCES branch_def(branch)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS unknown_branch_log (
                                                   id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -51,7 +52,7 @@ CREATE TABLE IF NOT EXISTS unknown_branch_log (
                                                   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                                                   KEY idx_unknown_norm_key (norm_key),
                                                   KEY idx_unknown_source (source_file)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT IGNORE INTO metric_def(metric, name, unit, kind, base_metric) VALUES
                                                                          ('CNT_TOTAL', '户数', '户', 'LEVEL', NULL),
@@ -79,16 +80,17 @@ INSERT IGNORE INTO branch_def(branch, enabled, sort_no) VALUES
                                                             ('岱庄',1,21),('高里',1,22),('河阳',1,23),('大王庄',1,24),('东张哨',1,25),('库沟',1,26),('城区',1,27),('开发区',1,28),('小微贷',1,29),('小微贷-房贷',1,30),
                                                             ('府前',1,31),('汉街',1,32),('才山',1,33),('公司',1,34),('经营中心',1,35);
 
-INSERT IGNORE INTO branch_alias(alias, branch, norm_key) VALUES
-                                                             ('营业部','营业部','营业部'),('界湖','界湖','界湖'),('大庄','大庄','大庄'),('张庄','张庄','张庄'),('依汶','依汶','依汶'),('马牧池','马牧池','马牧池'),
-                                                             ('岸堤','岸堤','岸堤'),('孙祖','孙祖','孙祖'),('双喉','双喉','双喉'),('双堠','双喉','双堠'),('青驼','青驼','青驼'),('砖埠','砖埠','砖埠'),('葛沟','葛沟','葛沟'),
-                                                             ('杨坡','杨坡','杨坡'),('蒲汪','蒲汪','蒲汪'),('湖头','湖头','湖头'),('苏村','苏村','苏村'),('铜井','铜井','铜井'),('辛集','辛集','辛集'),
-                                                             ('朱家里庄','朱家里庄','朱家里庄'),('中高湖','中高湖','中高湖'),('岱庄','岱庄','岱庄'),('高里','高里','高里'),('河阳','河阳','河阳'),('大王庄','大王庄','大王庄'),
-                                                             ('东张哨','东张哨','东张哨'),('库沟','库沟','库沟'),('城区','城区','城区'),('开发区','开发区','开发区'),('小微贷','小微贷','小微贷'),
-                                                             ('小微贷房贷','小微贷-房贷','小微贷房贷'),('小微贷-房贷','小微贷-房贷','小微贷房贷'),('府前','府前','府前'),('汉街','汉街','汉街'),('才山','才山','才山'),
-                                                             ('公司','公司','公司'),('公司业务部','公司','公司业务部'),('经营中心','经营中心','经营中心'),('资产经营中心','经营中心','资产经营中心'),('小微贷营销中心','小微贷','小微贷营销中心');
+INSERT IGNORE INTO branch_alias(raw_branch, canon_branch, norm_key, enabled) VALUES
+                                                                                 ('营业部','营业部','营业部',1),('界湖','界湖','界湖',1),('大庄','大庄','大庄',1),('张庄','张庄','张庄',1),('依汶','依汶','依汶',1),('马牧池','马牧池','马牧池',1),
+                                                                                 ('岸堤','岸堤','岸堤',1),('孙祖','孙祖','孙祖',1),('双喉','双喉','双喉',1),('双堠','双喉','双堠',1),('青驼','青驼','青驼',1),('砖埠','砖埠','砖埠',1),('葛沟','葛沟','葛沟',1),
+                                                                                 ('杨坡','杨坡','杨坡',1),('蒲汪','蒲汪','蒲汪',1),('湖头','湖头','湖头',1),('苏村','苏村','苏村',1),('铜井','铜井','铜井',1),('辛集','辛集','辛集',1),
+                                                                                 ('朱家里庄','朱家里庄','朱家里庄',1),('中高湖','中高湖','中高湖',1),('岱庄','岱庄','岱庄',1),('高里','高里','高里',1),('河阳','河阳','河阳',1),('大王庄','大王庄','大王庄',1),
+                                                                                 ('东张哨','东张哨','东张哨',1),(' 东张哨','东张哨','东张哨',1),('东张哨 ','东张哨','东张哨',1),('东张哨　','东张哨','东张哨',1),('东张哨\r','东张哨','东张哨',1),
+                                                                                 ('库沟','库沟','库沟',1),('城区','城区','城区',1),('开发区','开发区','开发区',1),('小微贷','小微贷','小微贷',1),('小微贷房贷','小微贷-房贷','小微贷房贷',1),
+                                                                                 ('小微贷-房贷','小微贷-房贷','小微贷房贷',1),('府前','府前','府前',1),('汉街','汉街','汉街',1),('才山','才山','才山',1),('公司','公司','公司',1),
+                                                                                 ('公司业务部','公司','公司业务部',1),('经营中心','经营中心','经营中心',1),('资产经营中心','经营中心','资产经营中心',1),('小微贷营销中心','小微贷','小微贷营销中心',1);
 
 UPDATE fact_metric_daily f
-    JOIN branch_alias a ON f.norm_branch_key = a.norm_key
-SET f.branch = a.branch
-WHERE f.branch <> a.branch;
+    JOIN branch_alias a ON f.norm_branch_key = a.norm_key AND a.enabled = 1
+SET f.branch = a.canon_branch
+WHERE f.branch <> a.canon_branch;

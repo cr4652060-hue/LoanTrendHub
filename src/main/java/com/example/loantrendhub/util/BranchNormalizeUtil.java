@@ -40,7 +40,7 @@ public final class BranchNormalizeUtil {
                 .replace("分公司", "公司");
 
         String normKey = display
-                .replaceAll("[()\-\\s]", "")
+                .replaceAll("[()\\-\\s]", "")
                 .trim();
 
         return new BranchNormalized(display, normKey);

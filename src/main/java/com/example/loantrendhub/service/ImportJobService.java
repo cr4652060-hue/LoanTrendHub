@@ -17,7 +17,7 @@ import java.util.concurrent.*;
 @Service
 public class ImportJobService {
     private static final Logger log = LoggerFactory.getLogger(ImportJobService.class);
-    private final ExecutorService importPool = Executors.newFixedThreadPool(2);
+    private final ExecutorService importPool = Executors.newFixedThreadPool(1);
     private final Map<String, JobState> jobs = new ConcurrentHashMap<>();
     private final IngestService ingestService;
 

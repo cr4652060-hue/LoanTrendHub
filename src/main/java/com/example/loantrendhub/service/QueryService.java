@@ -26,7 +26,16 @@ public class QueryService {
         this.fillMissingWithZero = fillMissingWithZero;
     }
 
+
+    private void ensureMetadataReady() {
+        int branchCount = factRepo.countEnabledBranches();
+        int metricCount = factRepo.countMetricDefs();
+        if (branchCount <= 0 || metricCount <= 0) {
+            throw new MetadataNotReadyException("元数据未初始化，请检查 schema-mysql.sql 是否执行");
+        }
+    }
     public Map<String, Object> dateRange() {
+        ensureMetadataReady();
         Map<String, String> raw = factRepo.dateRange();
         String min = raw.getOrDefault("min", "");
         String max = raw.getOrDefault("max", "");
@@ -41,14 +50,19 @@ public class QueryService {
     public List<String> scopes() { return factRepo.findScopes(); }
 
     public List<String> branches(String scope) {
+        ensureMetadataReady();
         return factRepo.findBranches(DateUtil.normalizeScope(scope));
     }
     public Map<String, Object> branchDiagnostics(String scope) {
         return factRepo.branchDiagnostics(DateUtil.normalizeScope(scope));
     }
 
-    public List<MetricDef> metrics() { return metricService.listMetrics(); }
+    public List<MetricDef> metrics() {
+        ensureMetadataReady();
+        return metricService.listMetrics();
+    }
     public Map<String, Object> meta() {
+        ensureMetadataReady();
         List<String> scopes = scopes();
         if (scopes.isEmpty()) {
             scopes = List.of("PHY", "ADJ");

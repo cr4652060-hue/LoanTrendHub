@@ -2,24 +2,27 @@ spring:
   datasource:
     url: jdbc:mysql://127.0.0.1:3306/loantrendhub?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true
     username: root
-    password: Yn@856391
+    password: 123456
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
-      maximum-pool-size: 10
-      minimum-idle: 2
+      maximum-pool-size: 20
+      minimum-idle: 5
       connection-timeout: 30000
       idle-timeout: 300000
-      max-lifetime: 600000
+      max-lifetime: 900000
+      pool-name: LoanTrendHubHikariPool
 
   sql:
     init:
       mode: always
       schema-locations: classpath:schema-mysql.sql
+      continue-on-error: false
 
   servlet:
     multipart:
       max-file-size: 200MB
-      max-request-size: 500MB
+      max-request-size: 800MB
+      file-size-threshold: 2MB
 
 server:
   port: 18090
@@ -31,6 +34,8 @@ server:
   tomcat:
     connection-timeout: 60000
     uri-encoding: UTF-8
+    max-http-form-post-size: 838860800
+    max-swallow-size: 838860800
   error:
     include-message: always
     include-stacktrace: never
@@ -38,7 +43,8 @@ server:
 logging:
   level:
     org.springframework.jdbc.core: INFO
-    om.zaxxer.hikari: INFO
+    com.zaxxer.hikari: INFO
+
 app:
   query:
     fill-missing-with-zero: true

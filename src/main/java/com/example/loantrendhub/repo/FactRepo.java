@@ -119,17 +119,26 @@ public class FactRepo {
 
     public Map<String, String> findBranchAliasNormMap() {
         return jdbcTemplate.query(
-                "SELECT norm_key, branch FROM branch_alias",
+                "SELECT norm_key, canon_branch FROM branch_alias WHERE enabled = 1",
                 rs -> {
                     Map<String, String> map = new LinkedHashMap<>();
                     while (rs.next()) {
-                        map.put(rs.getString("norm_key"), rs.getString("branch"));
+                        map.put(rs.getString("norm_key"), rs.getString("canon_branch"));
                     }
                     return map;
                 }
         );
     }
 
+    public int countEnabledBranches() {
+        Integer count = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM branch_def WHERE enabled = 1", Integer.class);
+        return count == null ? 0 : count;
+    }
+
+    public int countMetricDefs() {
+        Integer count = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM metric_def", Integer.class);
+        return count == null ? 0 : count;
+    }
     public List<String> findDates(String scope, String start, String end) {
         String sql = "SELECT DISTINCT biz_date FROM fact_metric_daily WHERE " + NORMALIZED_SCOPE_SQL + " = ? " +
                 "AND biz_date BETWEEN ? AND ? ORDER BY biz_date";
