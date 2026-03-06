@@ -253,7 +253,7 @@ public class IngestService {
             return new ResolveBranchResult(displayBranch, "no_alias_mapping");
         }
         if (!canonicalBranches.contains(canonical)) {
-            return new ResolveBranchResult(canonical, "canon_branch_not_enabled:" + canonical);
+            return new ResolveBranchResult(canonical, "branch_not_enabled:" + canonical);
         }
         return new ResolveBranchResult(canonical, null);
     }

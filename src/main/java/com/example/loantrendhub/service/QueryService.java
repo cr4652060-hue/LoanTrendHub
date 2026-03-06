@@ -44,9 +44,11 @@ public class QueryService {
 
     private void ensureMetadataReady() {
         int branchCount = factRepo.countEnabledBranches();
+        int aliasCount = factRepo.countBranchAlias();
         int metricCount = factRepo.countMetricDefs();
-        if (branchCount <= 0 || metricCount <= 0) {
-            throw new MetadataNotReadyException("元数据未初始化，请检查 schema-mysql.sql 是否已执行");
+        boolean factExists = factRepo.factTableExists();
+        if (branchCount <= 0 || aliasCount <= 0 || metricCount <= 0 || !factExists) {
+            throw new MetadataNotReadyException("数据库初始化未完成，请检查 schema-mysql.sql 是否执行");
         }
     }
 

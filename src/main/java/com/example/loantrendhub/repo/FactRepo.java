@@ -150,11 +150,11 @@ public class FactRepo {
 
     public Map<String, String> findBranchAliasRawMap() {
         return jdbcTemplate.query(
-                "SELECT raw_branch, canon_branch FROM branch_alias WHERE enabled = 1",
+                "SELECT alias, branch FROM branch_alias",
                 rs -> {
                     Map<String, String> map = new LinkedHashMap<>();
                     while (rs.next()) {
-                        map.put(rs.getString("raw_branch"), rs.getString("canon_branch"));
+                        map.put(rs.getString("alias"), rs.getString("branch"));
                     }
                     return map;
                 }
@@ -163,11 +163,11 @@ public class FactRepo {
 
     public Map<String, String> findBranchAliasNormMap() {
         return jdbcTemplate.query(
-                "SELECT norm_key, canon_branch FROM branch_alias WHERE enabled = 1",
+                "SELECT norm_key, branch FROM branch_alias",
                 rs -> {
                     Map<String, String> map = new LinkedHashMap<>();
                     while (rs.next()) {
-                        map.put(rs.getString("norm_key"), rs.getString("canon_branch"));
+                        map.put(rs.getString("norm_key"), rs.getString("branch"));
                     }
                     return map;
                 }
@@ -179,9 +179,22 @@ public class FactRepo {
         return count == null ? 0 : count;
     }
 
+    public int countBranchAlias() {
+        Integer count = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM branch_alias", Integer.class);
+        return count == null ? 0 : count;
+    }
+
     public int countMetricDefs() {
         Integer count = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM metric_def", Integer.class);
         return count == null ? 0 : count;
+    }
+
+    public boolean factTableExists() {
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(1) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'fact_metric_daily'",
+                Integer.class
+        );
+        return count != null && count > 0;
     }
 
     public List<String> findDates(String scope, String start, String end) {

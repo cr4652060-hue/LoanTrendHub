@@ -17,7 +17,7 @@ public class ApiExceptionHandler {
     @ExceptionHandler(MetadataNotReadyException.class)
     public ResponseEntity<Map<String, Object>> handleMetadataNotReady(MetadataNotReadyException ex) {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
-                "code", "META_NOT_READY",
+                "code", "DB_NOT_READY",
                 "message", ex.getMessage()
         ));
     }
