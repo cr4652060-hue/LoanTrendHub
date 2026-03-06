@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
-    <title>LoanTrendHub </title>
+    <title>LoanTrendHub 多视角贷款日报分析台</title>
     <link rel="icon" href="/favicon.ico">
     <script src="/js/echarts.min.js"></script>
     <style>
@@ -62,119 +62,119 @@
 <div class="wrap">
     <div class="topbar">
         <div>
-            <div class="title">LoanTrendHub 婢舵俺顫嬬憴鎺曟嵍濞嗙偓妫╅幎銉ュ瀻閺嬫劕褰?/div>
+            <div class="title">LoanTrendHub 多视角贷款日报分析台</div>
             <div class="subtitle">
-                閺€顖涘瘮閿涙xcel 閹靛綊鍣洪崗銉ョ氨閿涘牅瀵岄柨顕嗙窗biz_date + scope + branch + metric 閸烆垯绔寸憰鍡欐磰閿涘缍旈悜顓炲閸ユ拝绱欑純鎴犲仯鑴抽幐鍥ㄧ垼閿涘缍旀径姘辩秹閻愮绉奸崝鍖＄礄婢舵氨鍤庨幎妯煎殠閿涘缍旀晶鐐烘毐閻滃浄绱欒灃 姊?娑撳﹥婀＄€涙﹢鍣洪敍?
+                支持：Excel 批量入库（主键：biz_date + scope + branch + metric 唯一覆盖）｜热力图（网点×指标）｜多网点趋势（多线折线）｜增长率（Δ ÷ 上期存量）
             </div>
         </div>
         <div class="badges">
-            <div class="badge">閺冦儲婀￠崠娲？閿?span id="badgeRange">-</span></div>
-            <div class="badge">瑜版挸澧犻崣锝呯窞閿?span id="badgeScope">-</span></div>
-            <div class="badge">缂冩垹鍋ｉ弫甯窗<span id="badgeBranchCnt">-</span></div>
-            <div class="badge">閻樿埖鈧緤绱?span id="badgeStatus">閸掓繂顫愰崠鏍﹁厬閳?/span></div>
+            <div class="badge">日期区间：<span id="badgeRange">-</span></div>
+            <div class="badge">当前口径：<span id="badgeScope">-</span></div>
+            <div class="badge">网点数：<span id="badgeBranchCnt">-</span></div>
+            <div class="badge">状态：<span id="badgeStatus">初始化中…</span></div>
         </div>
     </div>
 
     <div class="grid">
         <div class="card">
-            <h3>閳?閹靛綊鍣虹€电厧鍙嗛敍鍦梮cel閿?/h3>
+            <h3>① 批量导入（Excel）</h3>
             <div class="row">
-                <label>闁瀚ㄩ弬鍥︽閿涘牆褰叉径姘垛偓?.xlsx閿?/label>
+                <label>选择文件（可多选 .xlsx）</label>
                 <input id="fileInput" type="file" multiple accept=".xlsx"/>
-                <button class="btn primary" id="btnUpload">閹靛綊鍣虹€电厧鍙嗛崗銉ョ氨</button>
-                <button class="btn ghost" id="btnRefresh">閸掗攱鏌婇崗鍐╂殶閹?/button>
+                <button class="btn primary" id="btnUpload">批量导入入库</button>
+                <button class="btn ghost" id="btnRefresh">刷新元数据</button>
             </div>
-            <div class="help">瀵ら缚顔呮稉鈧▎锟犫偓澶嬪婢舵艾銇夐弬鍥︽閹靛綊鍣虹€电厧鍙嗛敍娑氶兇缂佺喐瀵滄稉濠氭暛閼奉亜濮╃憰鍡欐磰閿涘奔绗夋导姘跺櫢婢跺秴鐖㈢粔顖樷偓?/div>
+            <div class="help">建议一次选择多天文件批量导入；系统按主键自动覆盖，不会重复堆积。</div>
             <div style="margin-top:10px">
-                <label>鐎电厧鍙嗛弮銉ョ箶</label>
-                <textarea id="log" readonly>缁涘绶熺€电厧鍙嗛垾?/textarea>
+                <label>导入日志</label>
+                <textarea id="log" readonly>等待导入…</textarea>
             </div>
         </div>
 
         <div class="card">
-            <h3>閳?閺屻儴顕楅弶鈥叉閿涘牓鈧氨鏁ら敍?/h3>
+            <h3>② 查询条件（通用）</h3>
             <div class="split">
                 <div>
-                    <label>閸欙絽绶為敍鍧癱ope閿?/label>
+                    <label>口径（scope）</label>
                     <select id="scopeSel" style="width:100%"></select>
                 </div>
                 <div>
-                    <label>閹稿洦鐖ｉ敍鍧tric閿?/label>
+                    <label>指标（metric）</label>
                     <select id="metricSel" style="width:100%"></select>
                 </div>
             </div>
             <div class="split" style="margin-top:10px">
                 <div>
-                    <label>瀵偓婵妫╅張?/label>
-                    <input id="start" placeholder="yyyy-MM-dd 閹?2026.02.25" style="width:100%"/>
+                    <label>开始日期</label>
+                    <input id="start" placeholder="yyyy-MM-dd 或 2026.02.25" style="width:100%"/>
                 </div>
                 <div>
-                    <label>缂佹挻娼弮銉︽埂</label>
-                    <input id="end" placeholder="yyyy-MM-dd 閹?2026.02.25" style="width:100%"/>
+                    <label>结束日期</label>
+                    <input id="end" placeholder="yyyy-MM-dd 或 2026.02.25" style="width:100%"/>
                 </div>
             </div>
 
             <div style="margin-top:10px">
                 <div class="row" style="justify-content:space-between">
-                    <label>缂冩垹鍋ｉ敍鍧唕anches閿涘苯顦块柅澶涚礆</label>
-                    <span class="small">娑撳秹鈧鍨妯款吇閳ユ粌鍙忛柈銊х秹閻愬厜鈧?/span>
+                    <label>网点（branches，多选）</label>
+                    <span class="small">不选则默认“全部网点”</span>
                 </div>
                 <select id="branchMulti" class="multiSelect" multiple></select>
             </div>
 
             <div style="margin-top:10px">
-                <label>缂冩垹鍋ｉ幖婊呭偍閿涘牆褰查柅澶涚礆</label>
+                <label>网点搜索（可选）</label>
                 <div class="row">
-                    <input id="branchSearch" placeholder="鏉堟挸鍙嗛崗鎶芥暛鐎涙鐡柅? style="flex:1"/>
-                    <button class="btn ghost" id="btnSelectAll">閸忋劑鈧?/button>
-                    <button class="btn ghost" id="btnClear">濞撳懐鈹?/button>
+                    <input id="branchSearch" placeholder="输入关键字筛选" style="flex:1"/>
+                    <button class="btn ghost" id="btnSelectAll">全选</button>
+                    <button class="btn ghost" id="btnClear">清空</button>
                 </div>
             </div>
 
             <div class="help">
-                <div class="pill">婢х偤鏆遍悳鍥у經瀵板嫸绱版晶鐐烘毐閻?= 铻?閸欐ê瀵查柌? 姊?娑撳﹥婀＄€涙﹢鍣?/div>
-                <div class="help">閸忔湹鑵?铻?閺夈儴鍤滈垾婊冨綁閸栨牠鍣洪幐鍥ㄧ垼閳ユ繐绱欐俊?DOD_*閿涘绱濇稉濠冩埂鐎涙﹢鍣洪弶銉ㄥ殰閳ユ粌鐡ㄩ柌蹇斿瘹閺嶅洠鈧繐绱欐俊?*_TOTAL閿涘鈧倸褰茬憴锝夊櫞娑撹　鈧粈绮栨径鈺侇杻闁插繐宕伴弰銊ャ亯鐎涙﹢鍣洪惃鍕槷娓氬鈧繐绱濇笟澶哥艾鐠恒劎缍夐悙鐟邦嚠濮ｆ柣鈧?/div>
+                <div class="pill">增长率口径：增长率 = Δ(变化量) ÷ 上期存量</div>
+                <div class="help">其中 Δ 来自“变化量指标”（如 DOD_*），上期存量来自“存量指标”（如 *_TOTAL）。可解释为“今天增量占昨天存量的比例”，便于跨网点对比。</div>
             </div>
         </div>
     </div>
 
     <div class="tabs">
-        <div class="tab active" data-tab="heat">閻戭厼濮忛崶鎾呯礄缂冩垹鍋ｈ劤閹稿洦鐖ｉ敍?/div>
-        <div class="tab" data-tab="trend">婢舵氨缍夐悙纭呯Ъ閸斿尅绱欐径姘卞殠閹舵鍤庨敍?/div>
-        <div class="tab" data-tab="growth">婢х偤鏆遍悳鍥风礄铻?姊?娑撳﹥婀＄€涙﹢鍣洪敍?/div>
+        <div class="tab active" data-tab="heat">热力图（网点×指标）</div>
+        <div class="tab" data-tab="trend">多网点趋势（多线折线）</div>
+        <div class="tab" data-tab="growth">增长率（Δ ÷ 上期存量）</div>
     </div>
 
     <div class="panel" id="panel-heat">
         <div class="card">
-            <h3>閻戭厼濮忛崶?/h3>
+            <h3>热力图</h3>
             <div class="row">
                 <div style="min-width:240px;flex:1">
-                    <label>閻戭厼濮忛崶鐐）閺堢噦绱檇ate閿?/label>
+                    <label>热力图日期（date）</label>
                     <input id="heatDate" placeholder="yyyy-MM-dd" style="width:100%"/>
                 </div>
                 <div style="min-width:420px;flex:2">
-                    <label>閻戭厼濮忛崶鐐瘹閺嶅浄绱檓etrics閿涘苯顦块柅澶涚礆</label>
+                    <label>热力图指标（metrics，多选）</label>
                     <select id="heatMetricsSel" multiple size="6" style="width:100%;min-height:140px"></select>
-                    <input id="heatMetrics" placeholder="閸忕厧顔愰敍姘瘍閸欘垱澧滄潏鎾愁洤 BAL_TOTAL,CNT_TOTAL,DOD_BAL" style="width:100%;margin-top:6px"/>
+                    <input id="heatMetrics" placeholder="兼容：也可手输如 BAL_TOTAL,CNT_TOTAL,DOD_BAL" style="width:100%;margin-top:6px"/>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
-                      <button class="btn" type="button" id="btnHeatPickDefault">鐢摜鏁?妞?/button>
-                      <button class="btn" type="button" id="btnHeatPickAll">閸忋劑鈧?/button>
-                      <button class="btn" type="button" id="btnHeatPickNone">濞撳懐鈹?/button>
+                      <button class="btn" type="button" id="btnHeatPickDefault">常用3项</button>
+                      <button class="btn" type="button" id="btnHeatPickAll">全选</button>
+                      <button class="btn" type="button" id="btnHeatPickNone">清空</button>
                     </div>
                 </div>
-                <button class="btn primary" id="btnHeat">閸掗攱鏌婇悜顓炲閸?/button>
+                <button class="btn primary" id="btnHeat">刷新热力图</button>
             </div>
-            <div class="help">閻戭厼濮忛崶鎯ф祼鐎规矮绨╃紒杈剧窗Y=缂冩垹鍋ｉ敍瀛?閹稿洦鐖ｉ敍宀勵杹閼?閺佹澘鈧厧銇囩亸蹇嬧偓?/div>
+            <div class="help">热力图固定二维：Y=网点，X=指标，颜色=数值大小。</div>
             <div id="heatChart" class="chart"></div>
         </div>
     </div>
 
     <div class="panel hidden" id="panel-trend">
         <div class="card">
-            <h3>婢舵氨缍夐悙纭呯Ъ閸斿尅绱欐径姘卞殠閹舵鍤庨敍?/h3>
+            <h3>多网点趋势（多线折线）</h3>
             <div class="row">
-                <button class="btn primary" id="btnTrend">閸掗攱鏌婃径姘卞殠鐡掑濞?/button>
-                <span class="small">娴ｈ法鏁ら崣鍏呮櫠閳ユ粍鐓＄拠銏℃蒋娴犺绱欓柅姘辨暏閿涘鈧繄娈?scope/metric/dateRange/branches</span>
+                <button class="btn primary" id="btnTrend">刷新多线趋势</button>
+                <span class="small">使用右侧“查询条件（通用）”的 scope/metric/dateRange/branches</span>
             </div>
             <div id="trendChart" class="chart"></div>
         </div>
@@ -182,21 +182,21 @@
 
     <div class="panel hidden" id="panel-growth">
         <div class="card">
-            <h3>婢х偤鏆遍悳鍥风礄铻?姊?娑撳﹥婀＄€涙﹢鍣洪敍?/h3>
+            <h3>增长率（Δ ÷ 上期存量）</h3>
             <div class="row">
                 <div style="min-width:360px;flex:1">
-                    <label>閸欐ê瀵查柌蹇斿瘹閺嶅浄绱檇eltaMetric閿?/label>
+                    <label>变化量指标（deltaMetric）</label>
                     <select id="deltaSel" style="width:100%"></select>
-                    <input id="deltaMetric" placeholder="閸忕厧顔愰敍姘瘍閸欘垱澧滄潏鎾愁洤 DOD_BAL" style="width:100%;margin-top:6px"/>
+                    <input id="deltaMetric" placeholder="兼容：也可手输如 DOD_BAL" style="width:100%;margin-top:6px"/>
                 </div>
                 <div style="min-width:360px;flex:1">
-                    <label>鐎涙﹢鍣洪幐鍥ㄧ垼閿涘潌aseMetric閿?/label>
+                    <label>存量指标（baseMetric）</label>
                     <select id="baseSel" style="width:100%"></select>
-                    <input id="baseMetric" placeholder="閸忕厧顔愰敍姘瘍閸欘垱澧滄潏鎾愁洤 BAL_TOTAL" style="width:100%;margin-top:6px"/>
+                    <input id="baseMetric" placeholder="兼容：也可手输如 BAL_TOTAL" style="width:100%;margin-top:6px"/>
                 </div>
-                <button class="btn primary" id="btnGrowth">閸掗攱鏌婃晶鐐烘毐閻?/button>
+                <button class="btn primary" id="btnGrowth">刷新增长率</button>
             </div>
-<!--            <div class="help">閼汇儰绗傞張鐔风摠闁?0 娴兼艾顕遍懛鏉戝瀻濮ｅ秳璐?閿涘苯缂撶拋顔兼倵缁旑垰顕崚鍡樼槤閸嬫矮绻氶幎銈変缉閸忓秷顕ょ€电鈧?/div>-->
+<!--            <div class="help">若上期存量=0 会导致分母为0，建议后端对分母做保护避免误导。</div>-->
 
             <div id="growthChart" class="chart"></div>
         </div>
@@ -205,206 +205,114 @@
 </div>
 
 <script>
-    const $ = (id) => document.getElementById(id);
-    const NO_DATA_TEXT = '\u65e0\u6570\u636e';
-    const NOT_READY_TEXT = '\u672a\u751f\u6210';
+    const $ = (id)=>document.getElementById(id);
+    const log = (s)=>{ const el=$('log'); el.value = (el.value?el.value+"\n":"") + s; el.scrollTop = el.scrollHeight; };
 
-    const log = (s) => {
-        const el = $('log');
-        el.value = (el.value ? el.value + "\n" : "") + s;
-        el.scrollTop = el.scrollHeight;
-    };
-
-    async function jget(url) {
+    async function jget(url){
         const r = await fetch(url);
-        if (!r.ok) {
-            const t = await r.text().catch(() => "");
+        if(!r.ok){
+            const t = await r.text().catch(()=> "");
+            throw new Error(`${r.status} ${r.statusText} :: ${t}`);
+        }
+        return r.json();
+    }
+    async function jpost(url, formData){
+        const r = await fetch(url, { method:'POST', body: formData });
+        if(!r.ok){
+            const t = await r.text().catch(()=> "");
             throw new Error(`${r.status} ${r.statusText} :: ${t}`);
         }
         return r.json();
     }
 
-    async function jpost(url, formData) {
-        const r = await fetch(url, { method: 'POST', body: formData });
-        if (!r.ok) {
-            const t = await r.text().catch(() => "");
-            throw new Error(`${r.status} ${r.statusText} :: ${t}`);
-        }
-        return r.json();
-    }
-
-    function setBadge(id, val) {
-        $(id).textContent = (val === null || val === undefined || val === "") ? "-" : String(val);
-    }
-
-    function fillSelect(sel, arr, getVal = (x) => x, getLabel = (x) => x) {
+    function setBadge(id, val){ $(id).textContent = (val===null||val===undefined||val==="")?"-":String(val); }
+    function fillSelect(sel, arr, getVal=(x)=>x, getLabel=(x)=>x){
         sel.innerHTML = '';
-        (arr || []).forEach(x => {
-            const opt = document.createElement('option');
+        (arr||[]).forEach(x=>{
+            const opt=document.createElement('option');
             opt.value = getVal(x);
             opt.textContent = getLabel(x);
             sel.appendChild(opt);
         });
     }
-
-    function filteredBranches(all, kw) {
-        if (!kw) return all;
+    function filteredBranches(all, kw){
+        if(!kw) return all;
         const k = kw.trim().toLowerCase();
-        return all.filter(x => String(x).toLowerCase().includes(k));
+        return all.filter(x=> String(x).toLowerCase().includes(k));
+    }
+    function getSelectedValues(sel){
+        if(!sel) return [];
+        return Array.from(sel.selectedOptions).map(o=>o.value);
     }
 
-    function getSelectedValues(sel) {
-        if (!sel) return [];
-        return Array.from(sel.selectedOptions).map(o => o.value);
-    }
+    function getMultiSelected(sel){
+  if(!sel) return [];
+  // <select multiple>
+  if(sel.tagName && sel.tagName.toLowerCase()==='select'){
+    return Array.from(sel.selectedOptions || [])
+      .map(o => (o.value||'').trim())
+      .filter(v => v);
+  }
+  // fallback: comma-separated text input
+  const val = (sel.value || '').trim();
+  if(!val) return [];
+  return val.split(',').map(s => s.trim()).filter(Boolean);
+}
 
-    function getMultiSelected(sel) {
-        if (!sel) return [];
-        if (sel.tagName && sel.tagName.toLowerCase() === 'select') {
-            return Array.from(sel.selectedOptions || [])
-                .map(o => (o.value || '').trim())
-                .filter(v => v);
-        }
-        const val = (sel.value || '').trim();
-        if (!val) return [];
-        return val.split(',').map(s => s.trim()).filter(Boolean);
-    }
-
-    function setMultiSelected(sel, values) {
-        if (!sel) return;
-        const arr = Array.isArray(values) ? values : (values == null ? [] : [String(values)]);
-        if (sel.tagName && sel.tagName.toLowerCase() === 'select') {
-            const set = new Set(arr.map(v => String(v)));
-            Array.from(sel.options || []).forEach(o => {
-                o.selected = set.has(String(o.value));
-            });
-            sel.dispatchEvent(new Event('change'));
-            return;
-        }
-        if (typeof sel.value !== 'undefined') {
-            sel.value = arr.join(',');
-            sel.dispatchEvent(new Event('change'));
-        }
-    }
-
-    function toScopeOption(raw) {
-        if (typeof raw === 'string') {
-            return { key: raw, name: raw, minDate: '', maxDate: '', totalRows: 0, rowsOnTargetDate: 0 };
-        }
-        return {
-            key: String(raw?.key ?? ''),
-            name: String(raw?.name ?? raw?.key ?? ''),
-            minDate: String(raw?.minDate ?? ''),
-            maxDate: String(raw?.maxDate ?? ''),
-            totalRows: Number(raw?.totalRows ?? 0),
-            rowsOnTargetDate: Number(raw?.rowsOnTargetDate ?? 0)
-        };
-    }
-
-    function metricCode(m) {
-        return String(m?.metric ?? m?.key ?? '').trim();
-    }
-
-    function metricAvailable(m) {
-        return m?.available !== false;
-    }
-
-    function metricLabel(m) {
-        const code = metricCode(m);
-        const kind = String(m?.kind || '').toUpperCase();
-        const kindTip = kind === 'DELTA' ? 'DELTA' : (kind === 'LEVEL' ? 'LEVEL' : (kind === 'RATE' ? 'RATE' : ''));
-        const availability = metricAvailable(m) ? '' : ` / ${NOT_READY_TEXT}`;
-        return `${(m?.name ?? code)} (${code}${kindTip ? ' / ' + kindTip : ''}${availability})`;
-    }
-
-    function renderEmptyChart(chart, title, message) {
-        chart.clear();
-        chart.setOption({
-            animation: false,
-            title: {
-                text: title || '',
-                left: 'center',
-                top: '42%',
-                textStyle: { fontSize: 16, fontWeight: 700 }
-            },
-            graphic: [{
-                type: 'text',
-                left: 'center',
-                top: '54%',
-                style: {
-                    text: message || NO_DATA_TEXT,
-                    fill: '#6b7280',
-                    font: '14px sans-serif'
-                }
-            }],
-            xAxis: { show: false },
-            yAxis: { show: false },
-            series: []
-        }, true);
-    }
+function setMultiSelected(sel, values){
+  if(!sel) return;
+  const arr = Array.isArray(values) ? values : (values == null ? [] : [String(values)]);
+  if(sel.tagName && sel.tagName.toLowerCase()==='select'){
+    const set = new Set(arr.map(v => String(v)));
+    Array.from(sel.options || []).forEach(o => { o.selected = set.has(String(o.value)); });
+    sel.dispatchEvent(new Event('change'));
+    return;
+  }
+  if(typeof sel.value !== 'undefined'){
+    sel.value = arr.join(',');
+    sel.dispatchEvent(new Event('change'));
+  }
+}
 
     let SCOPE_OPTIONS = [];
     let ALL_BRANCHES = [];
     let METRIC_OPTIONS = [];
-
     const heatChart = echarts.init($('heatChart'));
     const trendChart = echarts.init($('trendChart'));
     const growthChart = echarts.init($('growthChart'));
 
-    function normalizeBranchName(name) {
-        return String(name || '')
-            .replace(/\n/g, '')
-            .replace(/[：:。．\.]/g, '')
-            .replace(/\s+/g, '')
-            .trim();
-    }
+    const BRANCH_PRIORITY = [
+        '营业部','界湖','大庄','张庄','依汶','马牧池','岸堤','孙祖','双喉','青驼','砖埠','葛沟','杨坡','蒲汪','湖头','苏村','铜井',
+        '辛集','朱家里庄','中高湖','岱庄','高里','河阳','大王庄','东张哨','库沟','城区','开发区','小微贷','小微贷-房贷','府前','汉街','才山','公司','经营中心'
+    ];
+    const BRANCH_ORDER_MAP = new Map(BRANCH_PRIORITY.map((name, idx) => [name, idx]));
 
-    function normalizeBranchOptions(branches) {
-        const unique = [];
-        const seen = new Set();
-        (branches || []).forEach(raw => {
-            const n = normalizeBranchName(raw);
-            if (!n || n.includes('\u5408\u8ba1')) return;
-            if (seen.has(n)) return;
-            seen.add(n);
-            unique.push(n);
-        });
-        unique.sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
-        return unique;
-    }
 
-    function getScopeName(scopeKey) {
+    function getScopeName(scopeKey){
         const hit = (SCOPE_OPTIONS || []).find(x => String(x.key) === String(scopeKey));
         return hit?.name || scopeKey || '';
     }
-
-    function findMetricDef(metric) {
-        return (METRIC_OPTIONS || []).find(m => metricCode(m) === String(metric || ''));
+    function findMetricDef(metric){
+        return (METRIC_OPTIONS || []).find(m => String(m.metric || m.key) === String(metric));
     }
 
-    function preferredMetricPool() {
-        const available = (METRIC_OPTIONS || []).filter(metricAvailable);
-        const nonCalc = available.filter(m => !metricCode(m).toUpperCase().startsWith('CALC_'));
-        return nonCalc.length ? nonCalc : available;
-    }
-
-    function pickGrowthDefaults() {
+    function pickGrowthDefaults(){
         const currentDelta = ($('deltaSel')?.value || $('deltaMetric')?.value || '').trim();
         const def = findMetricDef(currentDelta);
-        if (def?.baseMetric) {
+        if(def?.baseMetric){
             $('baseSel').value = def.baseMetric;
             $('baseMetric').value = def.baseMetric;
             return;
         }
-        const fallback = preferredMetricPool().find(m => String(m.kind || '').toUpperCase() === 'LEVEL') || preferredMetricPool()[0];
-        if (fallback) {
-            const m = metricCode(fallback);
+        const fallback = (METRIC_OPTIONS || []).find(m => String(m.kind).toUpperCase() === 'LEVEL');
+        if(fallback){
+            const m = fallback.metric || fallback.key || '';
             $('baseSel').value = m;
             $('baseMetric').value = m;
         }
     }
 
-    function activeTab(name) {
+    function activeTab(name){
         document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
         document.querySelectorAll('.panel').forEach(p => p.classList.add('hidden'));
         $('panel-' + name)?.classList.remove('hidden');
@@ -415,7 +323,7 @@
         }, 0);
     }
 
-    function renderMultiLine(chart, title, x, series, unit) {
+    function renderMultiLine(chart, title, x, series, unit){
         const xSorted = [...(x || [])].sort();
         const safeSeries = (series || []).map(s => {
             const values = s?.data || s?.y || [];
@@ -434,20 +342,15 @@
                 emphasis: { focus: 'series' }
             };
         });
-
-        const nonNullPoints = safeSeries.reduce((acc, s) => acc + s.data.filter(v => v !== null).length, 0);
-        if (safeSeries.length === 0 || nonNullPoints === 0) {
-            renderEmptyChart(chart, title || 'Trend', `${NO_DATA_TEXT} - adjust filters`);
+        if(safeSeries.length === 0){
+            chart.clear();
+            log('[WARN] 没有数据，请先导入或调整筛选条件');
             return;
         }
-
         chart.setOption({
             animation: false,
             title: { text: title || '' },
-            tooltip: {
-                trigger: 'axis',
-                valueFormatter: (v) => (v === null || v === undefined) ? NO_DATA_TEXT : `${v}${unit ? ' ' + unit : ''}`
-            },
+            tooltip: { trigger: 'axis' },
             legend: { type: 'scroll', top: 28 },
             grid: { left: 60, right: 24, top: 76, bottom: 70 },
             xAxis: { type: 'category', data: xSorted },
@@ -460,34 +363,20 @@
         }, true);
     }
 
-    function renderHeatmap(resp) {
+    function renderHeatmap(resp){
         const x = resp?.x || resp?.metrics || [];
         const y = resp?.y || resp?.branches || [];
         const data = resp?.data || [];
-        const title = resp?.title || `Heatmap: ${getScopeName(resp?.scope || $('scopeSel')?.value || '')}`;
+        const title = resp?.title || `热力图：${getScopeName(resp?.scope || $('scopeSel')?.value || '')}`;
         const unit = resp?.unit || '';
-        const allNull = !!resp?.meta?.allNull;
-
-        if (allNull || !data.length) {
-            renderEmptyChart(heatChart, title, '\u5f53\u524d\u65e5\u671f/\u53e3\u5f84/\u6307\u6807\u4e0b\u65e0\u6570\u636e\uff0c\u8bf7\u8c03\u6574\u67e5\u8be2\u6761\u4ef6');
-            return;
+        let min = Number.isFinite(resp?.min) ? resp.min : null;
+        let max = Number.isFinite(resp?.max) ? resp.max : null;
+        if(min === null || max === null){
+            const values = data.map(d => Number(d?.[2])).filter(Number.isFinite);
+            min = values.length ? Math.min(...values) : 0;
+            max = values.length ? Math.max(...values) : 1;
         }
-
-        const valuedData = data
-            .filter(d => Array.isArray(d) && d[3] === true && Number.isFinite(Number(d[2])))
-            .map(d => [d[0], d[1], Number(d[2]), true]);
-        const nullData = data
-            .filter(d => Array.isArray(d) && d[3] !== true)
-            .map(d => [d[0], d[1], 0, false]);
-
-        if (!valuedData.length) {
-            renderEmptyChart(heatChart, title, '\u5f53\u524d\u65e5\u671f/\u53e3\u5f84/\u6307\u6807\u4e0b\u65e0\u6570\u636e\uff0c\u8bf7\u8c03\u6574\u67e5\u8be2\u6761\u4ef6');
-            return;
-        }
-
-        let min = Number.isFinite(resp?.min) ? Number(resp.min) : Math.min(...valuedData.map(d => d[2]));
-        let max = Number.isFinite(resp?.max) ? Number(resp.max) : Math.max(...valuedData.map(d => d[2]));
-        if (min === max) {
+        if(min === max){
             max = min + 1;
         }
 
@@ -497,10 +386,8 @@
             tooltip: {
                 position: 'top',
                 formatter: (p) => {
-                    const point = Array.isArray(p?.data) ? p.data : [];
-                    const hasData = point[3] === true;
-                    const valText = hasData ? point[2] : NO_DATA_TEXT;
-                    return `${y[point[1]] || ''}<br/>${x[point[0]] || ''}: ${valText}${hasData && unit ? ' ' + unit : ''}`;
+                    const val = Array.isArray(p?.data) ? p.data[2] : '-';
+                    return `${y[p.data[1]] || ''}<br/>${x[p.data[0]] || ''}：${val}${unit ? ' ' + unit : ''}`;
                 }
             },
             grid: { left: 130, right: 42, top: 56, bottom: 100 },
@@ -518,7 +405,6 @@
             visualMap: {
                 min,
                 max,
-                seriesIndex: 1,
                 calculable: true,
                 orient: 'horizontal',
                 left: 'center',
@@ -531,372 +417,277 @@
                 { type: 'slider', yAxisIndex: 0, right: 10 },
                 { type: 'slider', xAxisIndex: 0, height: 16, bottom: 20 }
             ],
-            series: [
-                {
-                    name: 'noData',
-                    type: 'heatmap',
-                    data: nullData,
-                    silent: true,
-                    itemStyle: { color: '#e5e7eb' },
-                    emphasis: { disabled: true },
-                    label: { show: false }
-                },
-                {
-                    name: 'value',
-                    type: 'heatmap',
-                    data: valuedData,
-                    label: { show: false },
-                    emphasis: { itemStyle: { shadowBlur: 8, shadowColor: 'rgba(0,0,0,0.25)' } }
-                }
-            ]
+            series: [{
+                name: 'value',
+                type: 'heatmap',
+                data,
+                label: { show: false },
+                emphasis: { itemStyle: { shadowBlur: 8, shadowColor: 'rgba(0,0,0,0.25)' } }
+            }]
         }, true);
     }
 
-    function fillMetricSelectWithAvailability(sel, list, filterFn = () => true) {
-        const prev = sel?.multiple ? getMultiSelected(sel) : [sel?.value || ''];
-        const rows = (list || []).filter(filterFn);
-        sel.innerHTML = '';
+    function normalizeBranchName(name){
+        return String(name || '')
+            .replace(/\n/g, '')
+            .replace(/[：:。．\.]/g, '')
+            .replace(/\s+/g, '')
+            .trim();
+    }
 
-        rows.forEach(m => {
-            const code = metricCode(m);
-            const opt = document.createElement('option');
-            opt.value = code;
-            opt.textContent = metricLabel(m);
-            if (!metricAvailable(m)) {
-                opt.disabled = true;
-                opt.style.color = '#9ca3af';
-            }
-            sel.appendChild(opt);
+    function normalizeBranchOptions(branches){
+        const unique = [];
+        const seen = new Set();
+        (branches || []).forEach(raw => {
+            const n = normalizeBranchName(raw);
+            if(!n || n === '合计' || n.includes('合计')) return;
+            if(seen.has(n)) return;
+            seen.add(n);
+            unique.push(n);
         });
-
-        const activeCodes = rows.filter(metricAvailable).map(metricCode);
-        if (sel.multiple) {
-            const keep = prev.filter(v => activeCodes.includes(v));
-            setMultiSelected(sel, keep);
-        } else {
-            const next = activeCodes.find(v => prev.includes(v)) || activeCodes[0] || '';
-            sel.value = next;
-        }
+        unique.sort((a,b)=>{
+            const ai = BRANCH_ORDER_MAP.has(a) ? BRANCH_ORDER_MAP.get(a) : Number.MAX_SAFE_INTEGER;
+            const bi = BRANCH_ORDER_MAP.has(b) ? BRANCH_ORDER_MAP.get(b) : Number.MAX_SAFE_INTEGER;
+            if(ai !== bi) return ai - bi;
+            return a.localeCompare(b, 'zh-Hans-CN');
+        });
+        return unique;
     }
 
-    function applyMetricDefaults() {
-        const pool = preferredMetricPool();
-        const firstMetric = pool[0] ? metricCode(pool[0]) : '';
-        if (firstMetric) {
-            $('metricSel').value = firstMetric;
-        }
 
-        const heatDefaults = pool.slice(0, 3).map(metricCode);
-        if (getMultiSelected($('heatMetricsSel')).length === 0 && heatDefaults.length) {
-            setMultiSelected($('heatMetricsSel'), heatDefaults);
-            $('heatMetrics').value = heatDefaults.join(',');
-        }
-
-        const deltaCandidates = pool.filter(m => ['DELTA', 'LEVEL'].includes(String(m.kind || '').toUpperCase()));
-        const baseCandidates = pool.filter(m => String(m.kind || '').toUpperCase() === 'LEVEL');
-        if (deltaCandidates.length) {
-            $('deltaSel').value = metricCode(deltaCandidates[0]);
-            $('deltaMetric').value = $('deltaSel').value;
-        }
-        if (baseCandidates.length) {
-            $('baseSel').value = metricCode(baseCandidates[0]);
-            $('baseMetric').value = $('baseSel').value;
-        }
-
-        pickGrowthDefaults();
-    }
-
-    async function loadMetricsForScope(scope) {
-        const rows = await jget('/api/metrics?scope=' + encodeURIComponent(scope || ''));
-        METRIC_OPTIONS = Array.isArray(rows) ? rows : [];
-
-        fillMetricSelectWithAvailability($('metricSel'), METRIC_OPTIONS);
-        fillMetricSelectWithAvailability($('heatMetricsSel'), METRIC_OPTIONS);
-        fillMetricSelectWithAvailability($('deltaSel'), METRIC_OPTIONS, m => ['DELTA', 'LEVEL'].includes(String(m.kind || '').toUpperCase()));
-        fillMetricSelectWithAvailability($('baseSel'), METRIC_OPTIONS, m => String(m.kind || '').toUpperCase() === 'LEVEL');
-
-        if (!$('deltaSel').value) {
-            fillMetricSelectWithAvailability($('deltaSel'), METRIC_OPTIONS);
-        }
-        if (!$('baseSel').value) {
-            fillMetricSelectWithAvailability($('baseSel'), METRIC_OPTIONS);
-        }
-
-        applyMetricDefaults();
-    }
-
-    async function loadBranchesForScope(scope) {
-        ALL_BRANCHES = normalizeBranchOptions(await jget('/api/branches?scope=' + encodeURIComponent(scope || '')));
-        if (ALL_BRANCHES.length === 0) {
-            const debug = await jget('/api/branches/debug?scope=' + encodeURIComponent(scope || ''));
-            log('[WARN] branches=0: ' + JSON.stringify(debug));
-        }
-        $('branchSearch').value = '';
-        renderBranchList();
-        setBadge('badgeBranchCnt', ALL_BRANCHES.length);
-    }
-
-    function pickInitialScope(scopeRows) {
-        const withDateData = scopeRows.find(s => Number(s.rowsOnTargetDate || 0) > 0);
-        if (withDateData?.key) return withDateData.key;
-        const withAny = scopeRows.find(s => Number(s.totalRows || 0) > 0);
-        if (withAny?.key) return withAny.key;
-        return scopeRows[0]?.key || '';
-    }
-
-    async function refreshMeta() {
-        $('badgeStatus').textContent = 'Loading...';
-        try {
-            const dr = await jget('/api/dateRange');
-            if (dr && dr.hasData && dr.min && dr.max) {
+    async function refreshMeta(){
+        $('badgeStatus').textContent = '加载元数据…';
+        try{
+            const meta = await jget('/api/meta');
+            const dr = meta?.dateRange || {};
+            if(dr && dr.hasData && dr.min && dr.max){
                 setBadge('badgeRange', `${dr.min} ~ ${dr.max}`);
                 $('start').value = dr.min;
                 $('end').value = dr.max;
                 $('heatDate').value = dr.max;
             } else {
                 setBadge('badgeRange', '-');
-                $('start').value = '';
-                $('end').value = '';
-                $('heatDate').value = '';
-                log('[INFO] no data, import excel first');
+                log('[INFO] 当前暂无数据，请先批量导入 Excel');
             }
 
-            const scopesRaw = await jget('/api/scopes');
-            SCOPE_OPTIONS = (Array.isArray(scopesRaw) ? scopesRaw : []).map(toScopeOption).filter(x => x.key);
-            fillSelect($('scopeSel'), SCOPE_OPTIONS, x => x.key, x => x.name);
+            const scopes = (meta?.scopes || []).map(s => ({
+                key: s,
+                name: s === 'ADJ' ? '实体贷款（还原剔转）' : '实体贷款（纯账面）'
+            }));
+            SCOPE_OPTIONS = (scopes || [])
+                .map(s => ({ key: (s?.key || ''), name: (s?.name || s?.key || '') }))
+                .filter(x => x.key);
+            fillSelect($('scopeSel'), SCOPE_OPTIONS, x=>x.key, x=>x.name);
 
-            const defaultScope = pickInitialScope(SCOPE_OPTIONS);
-            if (defaultScope) {
-                $('scopeSel').value = defaultScope;
-                setBadge('badgeScope', getScopeName(defaultScope));
-                await loadMetricsForScope(defaultScope);
-                await loadBranchesForScope(defaultScope);
+            const metrics = meta?.metrics || [];
+            METRIC_OPTIONS = metrics || [];
+            const metricLabel = (m) => {
+                const code = (m.metric ?? m.key);
+                const kind = String(m.kind || '').toUpperCase();
+                const kindTip = kind === 'DELTA' ? '变化量' : (kind === 'LEVEL' ? '存量' : (kind === 'RATE' ? '比例' : ''));
+                return `${(m.name ?? code)}（${code}${kindTip ? ' / ' + kindTip : ''}）`;
+            };
+            fillSelect($('metricSel'), METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
+            // also fill heatmap & growth metric selectors
+            fillSelect($('heatMetricsSel'), METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
+            const deltaMetrics = METRIC_OPTIONS.filter(m => ['DELTA','LEVEL'].includes(String(m.kind || '').toUpperCase()));
+            const baseMetrics = METRIC_OPTIONS.filter(m => String(m.kind || '').toUpperCase() === 'LEVEL');
+            fillSelect($('deltaSel'), deltaMetrics.length ? deltaMetrics : METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
+            fillSelect($('baseSel'), baseMetrics.length ? baseMetrics : METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
+
+            let defaultScope = SCOPE_OPTIONS?.[0]?.key ?? 'PHY';
+
+            const defaultMetric = METRIC_OPTIONS?.[0]?.metric ?? METRIC_OPTIONS?.[0]?.key ?? '';
+            $('scopeSel').value = defaultScope;
+            $('metricSel').value = defaultMetric;
+            setBadge('badgeScope', getScopeName(defaultScope) || '-');
+
+            ALL_BRANCHES = normalizeBranchOptions(meta?.branches || []);
+            renderBranchList();
+            setBadge('badgeBranchCnt', ALL_BRANCHES.length);
+
+            $('badgeStatus').textContent = '就绪';
+            // defaults (avoid empty UI)
+            if($('heatMetricsSel') && $('heatMetricsSel').options.length>0 && getMultiSelected($('heatMetricsSel')).length===0){
+                const common = Array.from($('heatMetricsSel').options).slice(0,3).map(o=>o.value);
+                setMultiSelected($('heatMetricsSel'), common);
             }
-
-            if (dr?.hasData && !SCOPE_OPTIONS.some(s => Number(s.rowsOnTargetDate || 0) > 0)) {
-                log('[WARN] default date has no data in all scopes');
+            if($('deltaSel') && $('deltaSel').options.length>0 && !$('deltaSel').value){
+                $('deltaSel').value = $('deltaSel').options[0].value;
             }
-
-            $('badgeStatus').textContent = 'Ready';
-            log(`[OK] meta loaded: scopes=${SCOPE_OPTIONS.length} metrics=${METRIC_OPTIONS.length} branches=${ALL_BRANCHES.length}`);
-        } catch (e) {
-            $('badgeStatus').textContent = 'Init Failed';
-            log(`[ERR] init failed: ${e.message}`);
+            if($('baseSel') && $('baseSel').options.length>0 && !$('baseSel').value){
+                $('baseSel').value = $('baseSel').options[0].value;
+                $('deltaMetric').value = $('deltaSel').value;
+            }
+            pickGrowthDefaults();
+            log(`[OK] 元数据加载完成：scopes=${(scopes||[]).length} metrics=${(metrics||[]).length} branches=${ALL_BRANCHES.length}`);
+        }catch(e){
+            $('badgeStatus').textContent = '初始化失败';
+            log(`[ERR] 初始化失败：${e.message}`);
             console.error(e);
         }
     }
 
-    function renderBranchList() {
+    function renderBranchList(){
         const kw = $('branchSearch').value || '';
         const list = filteredBranches(ALL_BRANCHES, kw);
         const sel = $('branchMulti');
         const keep = new Set(getSelectedValues(sel));
-        sel.innerHTML = '';
-        list.forEach(b => {
-            const opt = document.createElement('option');
-            opt.value = b;
-            opt.textContent = b;
-            if (keep.has(b)) opt.selected = true;
+        sel.innerHTML='';
+        list.forEach(b=>{
+            const opt=document.createElement('option');
+            opt.value=b;
+            opt.textContent=b;
+            if(keep.has(b)) opt.selected=true;
             sel.appendChild(opt);
         });
         setBadge('badgeBranchCnt', ALL_BRANCHES.length);
     }
-
-    async function waitJob(jobId) {
-        while (true) {
+    async function waitJob(jobId){
+        while(true){
             const job = await jget('/api/job/' + encodeURIComponent(jobId));
-            if (job.status === 'SUCCESS' || job.status === 'FAILED' || job.status === 'NOT_FOUND') return job;
+            if(job.status === 'SUCCESS' || job.status === 'FAILED' || job.status === 'NOT_FOUND') return job;
             await new Promise(r => setTimeout(r, 1200));
         }
     }
-
-    async function doUpload() {
+    async function doUpload(){
         const files = $('fileInput').files;
-        if (!files || files.length === 0) {
-            log('[WARN] no file selected');
+        if(!files || files.length===0){
+            log('[WARN] 未选择文件');
             return;
         }
-
         const fd = new FormData();
-        Array.from(files).forEach(f => fd.append('files', f));
+        Array.from(files).forEach(f=>fd.append('files', f));
+
         $('btnUpload').disabled = true;
-        try {
-            log(`[INFO] uploading ${files.length} files`);
+        try{
+            log(`[INFO] 开始上传：${files.length} 个文件…`);
             const res = await jpost('/api/upload', fd);
-            log('[INFO] job submitted: ' + res.jobId);
+            log('[INFO] 导入任务已提交：jobId=' + res.jobId);
             const done = await waitJob(res.jobId);
-            log('[OK] upload done: ' + JSON.stringify(done));
+            log('[OK] 导入完成：' + JSON.stringify(done));
             await refreshMeta();
-        } catch (e) {
-            log('[ERR] upload failed: ' + e.message);
+        }catch(e){
+            log('[ERR] 导入失败：' + e.message);
             console.error(e);
-        } finally {
+        }finally{
             $('btnUpload').disabled = false;
         }
     }
 
-    async function doHeat() {
-        try {
+    async function doHeat(){
+        try{
             const scope = $('scopeSel').value || '';
             const date = $('heatDate').value || '';
             let metrics = ($('heatMetrics').value || '').trim();
             const selVals = getMultiSelected($('heatMetricsSel'));
-            if (selVals.length) metrics = selVals.join(',');
-            if (!date) {
-                log('[WARN] heatmap date required');
-                return;
-            }
-            if (!metrics) {
-                log('[WARN] heatmap metrics required');
-                return;
-            }
-
+            if(selVals.length) metrics = selVals.join(',');
+            if(!date){ log('[WARN] 热力图日期不能为空'); return; }
+            if(!metrics){ log('[WARN] 热力图指标不能为空'); return; }
             const url = `/api/heatmap?scope=${encodeURIComponent(scope)}&date=${encodeURIComponent(date)}&metrics=${encodeURIComponent(metrics)}`;
             const resp = await jget(url);
             renderHeatmap(resp);
-            if (resp?.meta?.allNull) {
-                log('[INFO] no data for current date/scope/metric');
-            } else {
-                log(`[OK] heatmap refreshed, dataRowCount=${resp?.meta?.dataRowCount ?? 0}`);
-            }
-        } catch (e) {
-            log('[ERR] heatmap failed: ' + e.message);
+            log('[OK] 热力图刷新完成');
+        }catch(e){
+            log('[ERR] 热力图失败：' + e.message);
             console.error(e);
         }
     }
 
-    async function doTrendMulti() {
-        try {
+    async function doTrendMulti(){
+        try{
             const scope = $('scopeSel').value || '';
             const metric = $('metricSel').value || '';
             const start = $('start').value || '';
             const end = $('end').value || '';
-            if (!metric) {
-                log('[WARN] metric required');
-                return;
-            }
             const branchArr = getSelectedValues($('branchMulti'));
             const picked = branchArr.length ? branchArr : ALL_BRANCHES;
             const branches = picked.join(',');
             const url = `/api/trend/multi?scope=${encodeURIComponent(scope)}&metric=${encodeURIComponent(metric)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&branches=${encodeURIComponent(branches)}`;
             const resp = await jget(url);
             (resp?.warnings || []).forEach(w => log('[WARN] ' + w));
-            if (resp?.meta?.truncated) {
-                log(`[WARN] branches truncated: ${resp.meta.requestedBranches} -> ${resp.meta.effectiveBranches}`);
+            if(resp?.meta?.truncated){
+                log(`[WARN] 已截断网点: 请求 ${resp.meta.requestedBranches}，实际 ${resp.meta.effectiveBranches}。`);
             }
-            if (resp?.meta?.allNull) {
-                renderEmptyChart(trendChart, resp.title || `Trend: ${scope} / ${metric}`, `${NO_DATA_TEXT}, adjust filters`);
-                log('[INFO] trend no data');
-                return;
-            }
-            renderMultiLine(trendChart, resp.title || `Trend: ${scope} / ${metric}`, resp.x || [], resp.series || [], resp.unit || '');
-            log(`[OK] trend refreshed, dataRowCount=${resp?.meta?.dataRowCount ?? 0}`);
-        } catch (e) {
-            log('[ERR] trend failed: ' + e.message);
+            renderMultiLine(trendChart, resp.title || `趋势：${scope} / ${metric}`, resp.x || [], resp.series || [], resp.unit || '');
+            log('[OK] 多线趋势刷新完成');
+        }catch(e){
+            log('[ERR] 多线趋势失败：' + e.message);
             console.error(e);
         }
     }
 
-    async function doGrowth() {
-        try {
+    async function doGrowth(){
+        try{
             const scope = $('scopeSel').value || '';
             const start = $('start').value || '';
             const end = $('end').value || '';
             const branchArr = getSelectedValues($('branchMulti'));
             const picked = branchArr.length ? branchArr : ALL_BRANCHES;
             const branches = picked.join(',');
-
             let deltaMetric = ($('deltaMetric').value || '').trim();
             const ds = ($('deltaSel')?.value || '').trim();
-            if (ds) deltaMetric = ds;
-
+            if(ds) deltaMetric = ds;
             let baseMetric = ($('baseMetric').value || '').trim();
             const bs = ($('baseSel')?.value || '').trim();
-            if (bs) baseMetric = bs;
-
-            if (!deltaMetric || !baseMetric) {
-                log('[WARN] growth needs deltaMetric and baseMetric');
+            if(bs) baseMetric = bs;
+            if(!deltaMetric || !baseMetric){
+                log('[WARN] 增长率需要填写 变化量指标 与 存量指标');
                 return;
             }
-
             const url = `/api/growth?scope=${encodeURIComponent(scope)}&deltaMetric=${encodeURIComponent(deltaMetric)}&baseMetric=${encodeURIComponent(baseMetric)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&branches=${encodeURIComponent(branches)}`;
             const resp = await jget(url);
             (resp?.warnings || []).forEach(w => log('[WARN] ' + w));
-            if (resp?.meta?.truncated) {
-                log(`[WARN] branches truncated: ${resp.meta.requestedBranches} -> ${resp.meta.effectiveBranches}`);
+            if(resp?.meta?.truncated){
+                log(`[WARN] 已截断网点: 请求 ${resp.meta.requestedBranches}，实际 ${resp.meta.effectiveBranches}。`);
             }
-            if (resp?.meta?.allNull) {
-                renderEmptyChart(growthChart, resp.title || `Growth: ${scope}`, `${NO_DATA_TEXT}, adjust filters`);
-                log('[INFO] growth no data');
-                return;
-            }
-            renderMultiLine(growthChart, resp.title || `Growth: ${scope}`, resp.x || [], resp.series || [], resp.unit || '');
-            log(`[OK] growth refreshed, dataRowCount=${resp?.meta?.dataRowCount ?? 0}`);
-        } catch (e) {
-            log('[ERR] growth failed: ' + e.message);
+            renderMultiLine(growthChart, resp.title || `增长率：${scope}`, resp.x || [], resp.series || [], resp.unit || '');
+            log('[OK] 增长率刷新完成');
+        }catch(e){
+            log('[ERR] 增长率失败：' + e.message);
             console.error(e);
         }
     }
 
-    document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => activeTab(t.dataset.tab)));
+    document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click', ()=>activeTab(t.dataset.tab)));
     $('btnUpload').addEventListener('click', doUpload);
     $('btnRefresh').addEventListener('click', refreshMeta);
     $('btnHeat').addEventListener('click', doHeat);
-
-    $('btnHeatPickAll')?.addEventListener('click', () => {
-        const codes = preferredMetricPool().map(metricCode);
-        setMultiSelected($('heatMetricsSel'), codes);
-        $('heatMetrics').value = codes.join(',');
-    });
-
-    $('btnHeatPickNone')?.addEventListener('click', () => {
-        setMultiSelected($('heatMetricsSel'), []);
-        $('heatMetrics').value = '';
-    });
-
-    $('btnHeatPickDefault')?.addEventListener('click', () => {
-        const defaults = preferredMetricPool().slice(0, 3).map(metricCode);
-        setMultiSelected($('heatMetricsSel'), defaults);
-        $('heatMetrics').value = defaults.join(',');
-    });
-
+    $('btnHeatPickAll')?.addEventListener('click', ()=>{ setMultiSelected($('heatMetricsSel'), Array.from($('heatMetricsSel')?.options||[]).map(o=>o.value)); });
+    $('btnHeatPickNone')?.addEventListener('click', ()=>{ setMultiSelected($('heatMetricsSel'), []); });
+    $('btnHeatPickDefault')?.addEventListener('click', ()=>{ const defaults=['BAL_TOTAL','CNT_TOTAL','DOD_BAL']; setMultiSelected($('heatMetricsSel'), defaults); $('heatMetrics').value = defaults.join(','); });
     $('btnTrend').addEventListener('click', doTrendMulti);
     $('btnGrowth').addEventListener('click', doGrowth);
 
-    $('scopeSel').addEventListener('change', async () => {
+    $('scopeSel').addEventListener('change', async ()=>{
         const scope = $('scopeSel').value || '';
         setBadge('badgeScope', getScopeName(scope) || '-');
-        try {
-            await loadMetricsForScope(scope);
-            await loadBranchesForScope(scope);
-            log(`[OK] scope switched: ${scope}, metrics=${METRIC_OPTIONS.length}, branches=${ALL_BRANCHES.length}`);
-        } catch (e) {
-            log('[ERR] scope switch failed: ' + e.message);
+        try{
+            ALL_BRANCHES = normalizeBranchOptions(await jget('/api/branches?scope=' + encodeURIComponent(scope)));
+            if (ALL_BRANCHES.length === 0) {
+                const debug = await jget('/api/branches/debug?scope=' + encodeURIComponent(scope));
+                log('[WARN] 当前口径 branches=0，调试信息：' + JSON.stringify(debug));
+            }
+            $('branchSearch').value='';
+            renderBranchList();
+            log(`[OK] 切换口径：${scope}，branches=${ALL_BRANCHES.length}`);
+        }catch(e){
+            log('[ERR] 获取网点失败：' + e.message);
         }
     });
 
     $('branchSearch').addEventListener('input', renderBranchList);
-    $('btnSelectAll').addEventListener('click', () => Array.from($('branchMulti').options).forEach(o => o.selected = true));
-    $('btnClear').addEventListener('click', () => Array.from($('branchMulti').options).forEach(o => o.selected = false));
-
-    window.addEventListener('resize', () => {
-        heatChart.resize();
-        trendChart.resize();
-        growthChart.resize();
-    });
-
-    $('deltaSel')?.addEventListener('change', () => {
+    $('btnSelectAll').addEventListener('click', ()=> Array.from($('branchMulti').options).forEach(o=>o.selected=true));
+    $('btnClear').addEventListener('click', ()=> Array.from($('branchMulti').options).forEach(o=>o.selected=false));
+    window.addEventListener('resize', ()=>{ heatChart.resize(); trendChart.resize(); growthChart.resize(); });
+    $('deltaSel')?.addEventListener('change', ()=>{
         $('deltaMetric').value = $('deltaSel').value || '';
         pickGrowthDefaults();
     });
-
-    $('baseSel')?.addEventListener('change', () => {
+    $('baseSel')?.addEventListener('change', ()=>{
         $('baseMetric').value = $('baseSel').value || '';
     });
-
     refreshMeta();
 </script>
 </body>
 </html>
-
-
