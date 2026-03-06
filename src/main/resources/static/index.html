@@ -471,7 +471,29 @@ function setMultiSelected(sel, values){
         $('badgeStatus').textContent = '加载元数据…';
         try{
             const meta = await jget('/api/meta');
-            const dr = meta?.dateRange || {};
+            if(meta?.code === 'DB_NOT_READY'){
+                $('badgeStatus').textContent = '数据库未就绪';
+                setBadge('badgeRange', '-');
+                setBadge('badgeScope', '-');
+                setBadge('badgeBranchCnt', '-');
+                log('[ERR] ' + (meta?.message || '数据库初始化未完成，请检查 schema-mysql.sql 是否执行'));
+                return;
+            }
+
+            const scopesRaw = Array.isArray(meta?.scopes) ? meta.scopes : [];
+            const metricsRaw = Array.isArray(meta?.metrics) ? meta.metrics : [];
+            const branchesRaw = Array.isArray(meta?.branches) ? meta.branches : [];
+            if(!Array.isArray(meta?.scopes) || !Array.isArray(meta?.metrics) || !Array.isArray(meta?.branches)){
+                log('[WARN] 元数据字段缺失或格式异常，已使用空数组兜底。');
+            }
+
+            let dr = meta?.dateRange || {};
+            try{
+                const drResp = await jget('/api/dateRange');
+                if(drResp && typeof drResp === 'object') dr = drResp;
+            }catch(e){
+                log('[WARN] 获取日期范围失败（/api/dateRange）：' + e.message);
+            }
             if(dr && dr.hasData && dr.min && dr.max){
                 setBadge('badgeRange', `${dr.min} ~ ${dr.max}`);
                 $('start').value = dr.min;
@@ -482,7 +504,7 @@ function setMultiSelected(sel, values){
                 log('[INFO] 当前暂无数据，请先批量导入 Excel');
             }
 
-            const scopes = (meta?.scopes || []).map(s => ({
+            const scopes = scopesRaw.map(s => ({
                 key: s,
                 name: s === 'ADJ' ? '实体贷款（还原剔转）' : '实体贷款（纯账面）'
             }));
@@ -491,7 +513,7 @@ function setMultiSelected(sel, values){
                 .filter(x => x.key);
             fillSelect($('scopeSel'), SCOPE_OPTIONS, x=>x.key, x=>x.name);
 
-            const metrics = meta?.metrics || [];
+            const metrics = metricsRaw;
             METRIC_OPTIONS = metrics || [];
             const metricLabel = (m) => {
                 const code = (m.metric ?? m.key);
@@ -514,7 +536,7 @@ function setMultiSelected(sel, values){
             $('metricSel').value = defaultMetric;
             setBadge('badgeScope', getScopeName(defaultScope) || '-');
 
-            ALL_BRANCHES = normalizeBranchOptions(meta?.branches || []);
+            ALL_BRANCHES = normalizeBranchOptions(branchesRaw);
             renderBranchList();
             setBadge('badgeBranchCnt', ALL_BRANCHES.length);
 
@@ -699,7 +721,7 @@ function setMultiSelected(sel, values){
     $('baseSel')?.addEventListener('change', ()=>{
         $('baseMetric').value = $('baseSel').value || '';
     });
-    refreshMeta();
+     vv();
 </script>
 </body>
 </html>
