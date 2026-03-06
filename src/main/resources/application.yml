@@ -49,6 +49,5 @@ app:
   upload:
     max-files: 200
   query:
-    fill-missing-with-zero: true
     max-branch-series: 200
     max-points: 200000

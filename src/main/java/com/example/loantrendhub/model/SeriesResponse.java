@@ -18,14 +18,20 @@ public record SeriesResponse(
         this(title, unit, x, series, List.of(), Meta.none(series == null ? 0 : series.size()));
     }
 
-    public record Series(String name, List<Double> y) {}
+    public record Series(String name, List<Double> y) {
+    }
 
     public record Meta(int requestedBranches,
                        int effectiveBranches,
                        boolean truncated,
-                       int dropped) {
+                       int dropped,
+                       String requestedDate,
+                       String requestedScope,
+                       String requestedMetric,
+                       int dataRowCount,
+                       boolean allNull) {
         public static Meta none(int branches) {
-            return new Meta(branches, branches, false, 0);
+            return new Meta(branches, branches, false, 0, "", "", "", 0, true);
         }
     }
 }

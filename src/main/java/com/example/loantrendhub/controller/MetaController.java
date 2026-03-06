@@ -1,13 +1,13 @@
 package com.example.loantrendhub.controller;
 
 import com.example.loantrendhub.service.QueryService;
-import com.example.loantrendhub.util.DateUtil;
 import com.example.loantrendhub.util.TextCleanUtil;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -21,19 +21,26 @@ public class MetaController {
     }
 
     @GetMapping("/scopes")
-    public List<Map<String, String>> scopes() {
-        List<String> availableScopes = queryService.scopes();
-        if (availableScopes.isEmpty()) {
-            availableScopes = List.of("PHY", "ADJ");
+    public List<Map<String, Object>> scopes() {
+        Map<String, Object> dateRange = queryService.dateRange();
+        String targetDate = String.valueOf(dateRange.getOrDefault("max", ""));
+        List<Map<String, Object>> stats = queryService.scopeStats(targetDate);
+        if (!stats.isEmpty()) {
+            return stats;
         }
-        return availableScopes.stream()
-                .map(DateUtil::normalizeScope)
-                .distinct()
-                .map(scope -> Map.of(
-                        "key", scope,
-                        "name", TextCleanUtil.cleanText(DateUtil.scopeDisplayName(scope))
-                ))
-                .toList();
+
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (String scope : queryService.scopes()) {
+            rows.add(Map.of(
+                    "key", scope,
+                    "name", TextCleanUtil.cleanText(queryService.scopeDisplayName(scope)),
+                    "minDate", "",
+                    "maxDate", "",
+                    "totalRows", 0,
+                    "rowsOnTargetDate", 0
+            ));
+        }
+        return rows;
     }
 
     @GetMapping("/branches")
@@ -47,17 +54,27 @@ public class MetaController {
     }
 
     @GetMapping("/metrics")
-    public List<Map<String, Object>> metrics() {
+    public List<Map<String, Object>> metrics(@RequestParam(name = "scope", required = false) String scope) {
+        boolean checkAvailability = scope != null && !scope.isBlank();
         return queryService.metrics().stream()
-                .map(m -> Map.<String, Object>of(
-                        "key", m.metric(),
-                        "name", TextCleanUtil.cleanText(m.name()),
-                        "unit", TextCleanUtil.cleanText(m.unit()),
-                        "kind", m.kind() == null ? "" : TextCleanUtil.cleanText(m.kind()),
-                        "baseMetric", m.baseMetric() == null ? "" : TextCleanUtil.cleanText(m.baseMetric())
-                ))
+                .map(m -> {
+                    boolean available = !checkAvailability || queryService.metricAvailable(scope, m.metric());
+                    boolean calcMetric = m.metric() != null && m.metric().toUpperCase().startsWith("CALC_");
+                    return Map.<String, Object>of(
+                            "key", m.metric(),
+                            "metric", m.metric(),
+                            "name", TextCleanUtil.cleanText(m.name()),
+                            "unit", TextCleanUtil.cleanText(m.unit()),
+                            "kind", m.kind() == null ? "" : TextCleanUtil.cleanText(m.kind()),
+                            "baseMetric", m.baseMetric() == null ? "" : TextCleanUtil.cleanText(m.baseMetric()),
+                            "available", available,
+                            "availability", available ? "可用" : "未生成",
+                            "defaultSelected", available && !calcMetric
+                    );
+                })
                 .toList();
     }
+
     @GetMapping("/meta")
     public Map<String, Object> meta() {
         return queryService.meta();

@@ -88,12 +88,20 @@ public class IngestService {
 
                 ParseResult parsed = parseSheet(sheet, bizDate, source, aliasRawMap, aliasNormMap, canonicalBranches);
                 int fileSaved = persistFileInChunks(parsed.rows());
+                Map<String, Long> byBizDate = factRepo.countRowsBySourceFileByBizDate(source);
+                Map<String, Long> byScope = factRepo.countRowsBySourceFileByScope(source);
+                Map<String, Long> byMetric = factRepo.countRowsBySourceFileByMetric(source);
                 totalRows += parsed.rows().size();
                 totalSaved += fileSaved;
                 totalUnknown += parsed.unknownCount();
                 accepted.add(source);
                 messages.add("[OK] " + source + ": date=" + bizDate + " rows=" + parsed.rows().size() + " saved=" + fileSaved + " reject=" + parsed.unknownCount());
+                messages.add("[STAT] " + source + " rowsByBizDate=" + byBizDate);
+                messages.add("[STAT] " + source + " rowsByScope=" + byScope);
+                messages.add("[STAT] " + source + " rowsByMetric=" + byMetric);
                 messages.addAll(parsed.warnings());
+                log.info("import summary source={} rows={} saved={} reject={} rowsByBizDate={} rowsByScope={} rowsByMetric={}",
+                        source, parsed.rows().size(), fileSaved, parsed.unknownCount(), byBizDate, byScope, byMetric);
             } catch (Exception ex) {
                 Throwable root = rootCause(ex);
                 String reason = root.getMessage() == null ? root.getClass().getSimpleName() : root.getMessage();

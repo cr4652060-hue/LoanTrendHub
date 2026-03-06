@@ -7,14 +7,14 @@ import org.springframework.stereotype.Repository;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Repository
 public class FactRepo {
-    private static final String NORMALIZED_SCOPE_SQL = "CASE WHEN UPPER(scope) = 'ADJ' THEN 'ADJ' ELSE 'PHY' END";
-
     private final JdbcTemplate jdbcTemplate;
 
     public FactRepo(JdbcTemplate jdbcTemplate) {
@@ -73,29 +73,64 @@ public class FactRepo {
     }
 
     public List<String> findScopes() {
-        return List.of("PHY", "ADJ");
+        return jdbcTemplate.queryForList(
+                "SELECT DISTINCT scope FROM fact_metric_daily WHERE scope IS NOT NULL AND TRIM(scope) <> '' ORDER BY scope",
+                String.class
+        );
+    }
+
+    public List<ScopeStat> findScopeStats(String targetDate) {
+        String effectiveDate = (targetDate == null || targetDate.isBlank()) ? "__NO_DATE__" : targetDate.trim();
+        return jdbcTemplate.query(
+                """
+                SELECT scope,
+                       MIN(biz_date) AS min_date,
+                       MAX(biz_date) AS max_date,
+                       COUNT(1) AS total_rows,
+                       SUM(CASE WHEN biz_date = ? THEN 1 ELSE 0 END) AS rows_on_target
+                FROM fact_metric_daily
+                WHERE scope IS NOT NULL AND TRIM(scope) <> ''
+                GROUP BY scope
+                ORDER BY scope
+                """,
+                (rs, rowNum) -> new ScopeStat(
+                        rs.getString("scope"),
+                        rs.getString("min_date"),
+                        rs.getString("max_date"),
+                        rs.getLong("total_rows"),
+                        rs.getLong("rows_on_target")
+                ),
+                effectiveDate
+        );
     }
 
     public Map<String, Object> branchDiagnostics(String scope) {
         Map<String, Object> result = new LinkedHashMap<>();
-        String normalized = (scope == null || scope.isBlank()) ? "PHY" : scope;
+        String effectiveScope = (scope == null || scope.isBlank()) ? "" : scope.trim();
 
         Integer dictBranches = jdbcTemplate.queryForObject(
                 "SELECT COUNT(1) FROM branch_def WHERE enabled = 1",
                 Integer.class
         );
-        Integer rowsByScope = jdbcTemplate.queryForObject(
-                "SELECT COUNT(1) FROM fact_metric_daily WHERE " + NORMALIZED_SCOPE_SQL + " = ?",
-                Integer.class,
-                normalized
-        );
-        Integer distinctFactBranches = jdbcTemplate.queryForObject(
-                "SELECT COUNT(DISTINCT branch) FROM fact_metric_daily WHERE " + NORMALIZED_SCOPE_SQL + " = ?",
-                Integer.class,
-                normalized
-        );
+        Integer rowsByScope;
+        Integer distinctFactBranches;
+        if (effectiveScope.isBlank()) {
+            rowsByScope = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM fact_metric_daily", Integer.class);
+            distinctFactBranches = jdbcTemplate.queryForObject("SELECT COUNT(DISTINCT branch) FROM fact_metric_daily", Integer.class);
+        } else {
+            rowsByScope = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(1) FROM fact_metric_daily WHERE scope = ?",
+                    Integer.class,
+                    effectiveScope
+            );
+            distinctFactBranches = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(DISTINCT branch) FROM fact_metric_daily WHERE scope = ?",
+                    Integer.class,
+                    effectiveScope
+            );
+        }
 
-        result.put("scope", normalized);
+        result.put("scope", effectiveScope);
         result.put("dictBranches", dictBranches == null ? 0 : dictBranches);
         result.put("rowsByScope", rowsByScope == null ? 0 : rowsByScope);
         result.put("distinctFactBranches", distinctFactBranches == null ? 0 : distinctFactBranches);
@@ -150,63 +185,148 @@ public class FactRepo {
     }
 
     public List<String> findDates(String scope, String start, String end) {
-        String sql = "SELECT DISTINCT biz_date FROM fact_metric_daily WHERE " + NORMALIZED_SCOPE_SQL + " = ? " +
-                "AND biz_date BETWEEN ? AND ? ORDER BY biz_date";
+        if (scope == null || scope.isBlank()) {
+            String sql = "SELECT DISTINCT biz_date FROM fact_metric_daily WHERE biz_date BETWEEN ? AND ? ORDER BY biz_date";
+            return jdbcTemplate.queryForList(sql, String.class, start, end);
+        }
+        String sql = "SELECT DISTINCT biz_date FROM fact_metric_daily WHERE scope = ? AND biz_date BETWEEN ? AND ? ORDER BY biz_date";
         return jdbcTemplate.queryForList(sql, String.class, scope, start, end);
     }
 
     public List<FactRow> findByDateScopeMetrics(String date, String scope, List<String> metrics) {
-        if (metrics == null || metrics.isEmpty()) {
+        if (scope == null || scope.isBlank() || metrics == null || metrics.isEmpty()) {
             return List.of();
         }
-        String placeholders = String.join(",", java.util.Collections.nCopies(metrics.size(), "?"));
+        String placeholders = String.join(",", Collections.nCopies(metrics.size(), "?"));
         List<Object> args = new ArrayList<>();
         args.add(date);
         args.add(scope);
         args.addAll(metrics);
-        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, branch, metric, val, source_file FROM fact_metric_daily " +
-                "WHERE biz_date = ? AND " + NORMALIZED_SCOPE_SQL + " = ? AND metric IN (" + placeholders + ")";
+        String sql = "SELECT biz_date, scope, branch, metric, val, source_file FROM fact_metric_daily " +
+                "WHERE biz_date = ? AND scope = ? AND metric IN (" + placeholders + ")";
         return jdbcTemplate.query(sql, this::mapFactRow, args.toArray());
     }
 
     public List<FactRow> findSeriesByMetric(String scope, String metric, List<String> branches, String start, String end) {
-        if (branches == null || branches.isEmpty()) {
+        if (scope == null || scope.isBlank() || branches == null || branches.isEmpty()) {
             return List.of();
         }
-        String placeholders = String.join(",", java.util.Collections.nCopies(branches.size(), "?"));
+        String placeholders = String.join(",", Collections.nCopies(branches.size(), "?"));
         List<Object> args = new ArrayList<>();
         args.add(scope);
         args.add(metric);
         args.add(start);
         args.add(end);
         args.addAll(branches);
-        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, branch, metric, val, source_file FROM fact_metric_daily " +
-                "WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND metric = ? AND biz_date BETWEEN ? AND ? AND branch IN (" + placeholders + ") " +
+        String sql = "SELECT biz_date, scope, branch, metric, val, source_file FROM fact_metric_daily " +
+                "WHERE scope = ? AND metric = ? AND biz_date BETWEEN ? AND ? AND branch IN (" + placeholders + ") " +
                 "ORDER BY biz_date, branch";
         return jdbcTemplate.query(sql, this::mapFactRow, args.toArray());
     }
 
     public List<FactRow> findSeriesByBranch(String scope, String branch, List<String> metrics, String start, String end) {
-        if (metrics == null || metrics.isEmpty()) {
+        if (scope == null || scope.isBlank() || metrics == null || metrics.isEmpty()) {
             return List.of();
         }
-        String placeholders = String.join(",", java.util.Collections.nCopies(metrics.size(), "?"));
+        String placeholders = String.join(",", Collections.nCopies(metrics.size(), "?"));
         List<Object> args = new ArrayList<>();
         args.add(scope);
         args.add(branch);
         args.add(start);
         args.add(end);
         args.addAll(metrics);
-        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, branch, metric, val, source_file FROM fact_metric_daily " +
-                "WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND branch = ? AND biz_date BETWEEN ? AND ? AND metric IN (" + placeholders + ") " +
+        String sql = "SELECT biz_date, scope, branch, metric, val, source_file FROM fact_metric_daily " +
+                "WHERE scope = ? AND branch = ? AND biz_date BETWEEN ? AND ? AND metric IN (" + placeholders + ") " +
                 "ORDER BY biz_date, metric";
         return jdbcTemplate.query(sql, this::mapFactRow, args.toArray());
     }
 
     public List<FactRow> findSeries(String scope, String branch, String metric, String start, String end) {
-        String sql = "SELECT biz_date, " + NORMALIZED_SCOPE_SQL + " AS scope, branch, metric, val, source_file FROM fact_metric_daily " +
-                "WHERE " + NORMALIZED_SCOPE_SQL + " = ? AND branch = ? AND metric = ? AND biz_date BETWEEN ? AND ? ORDER BY biz_date";
+        if (scope == null || scope.isBlank()) {
+            return List.of();
+        }
+        String sql = "SELECT biz_date, scope, branch, metric, val, source_file FROM fact_metric_daily " +
+                "WHERE scope = ? AND branch = ? AND metric = ? AND biz_date BETWEEN ? AND ? ORDER BY biz_date";
         return jdbcTemplate.query(sql, this::mapFactRow, scope, branch, metric, start, end);
+    }
+
+    public List<HeatmapCell> findHeatmapMatrix(String date, String scope, List<String> metrics) {
+        if (date == null || date.isBlank() || scope == null || scope.isBlank() || metrics == null || metrics.isEmpty()) {
+            return List.of();
+        }
+        String metricTable = metrics.stream()
+                .map(v -> "SELECT ? AS metric")
+                .collect(Collectors.joining(" UNION ALL "));
+        String sql = """
+                SELECT b.branch,
+                       m.metric,
+                       f.val AS val
+                FROM branch_def b
+                CROSS JOIN (
+                """ + metricTable + """
+                ) m
+                LEFT JOIN fact_metric_daily f
+                  ON f.branch = b.branch
+                 AND f.biz_date = ?
+                 AND f.scope = ?
+                 AND f.metric = m.metric
+                WHERE b.enabled = 1
+                ORDER BY b.sort_no, b.branch
+                """;
+        List<Object> args = new ArrayList<>(metrics.size() + 2);
+        args.addAll(metrics);
+        args.add(date);
+        args.add(scope);
+        return jdbcTemplate.query(sql, (rs, rowNum) -> new HeatmapCell(
+                rs.getString("branch"),
+                rs.getString("metric"),
+                rs.getObject("val") == null ? null : rs.getDouble("val")
+        ), args.toArray());
+    }
+
+    public boolean metricExistsInScope(String scope, String metric) {
+        if (scope == null || scope.isBlank() || metric == null || metric.isBlank()) {
+            return false;
+        }
+        Integer one = jdbcTemplate.query(
+                "SELECT 1 FROM fact_metric_daily WHERE scope = ? AND metric = ? LIMIT 1",
+                rs -> rs.next() ? 1 : 0,
+                scope,
+                metric
+        );
+        return one != null && one == 1;
+    }
+
+    public Map<String, Long> countRowsBySourceFileByBizDate(String sourceFile) {
+        return countRowsBySourceFile(sourceFile, "biz_date");
+    }
+
+    public Map<String, Long> countRowsBySourceFileByScope(String sourceFile) {
+        return countRowsBySourceFile(sourceFile, "scope");
+    }
+
+    public Map<String, Long> countRowsBySourceFileByMetric(String sourceFile) {
+        return countRowsBySourceFile(sourceFile, "metric");
+    }
+
+    private Map<String, Long> countRowsBySourceFile(String sourceFile, String groupColumn) {
+        if (sourceFile == null || sourceFile.isBlank()) {
+            return Map.of();
+        }
+        String safeColumn = switch (groupColumn) {
+            case "biz_date", "scope", "metric" -> groupColumn;
+            default -> throw new IllegalArgumentException("Unsupported group column: " + groupColumn);
+        };
+        String sql = "SELECT " + safeColumn + " AS group_key, COUNT(1) AS cnt " +
+                "FROM fact_metric_daily WHERE source_file = ? " +
+                "GROUP BY " + safeColumn + " ORDER BY cnt DESC, group_key";
+        return jdbcTemplate.query(sql, rs -> {
+            Map<String, Long> map = new LinkedHashMap<>();
+            while (rs.next()) {
+                map.put(String.valueOf(rs.getString("group_key")), rs.getLong("cnt"));
+            }
+            return map;
+        }, sourceFile);
     }
 
     private FactRow mapFactRow(ResultSet rs, int rowNum) throws SQLException {
@@ -220,5 +340,17 @@ public class FactRepo {
                 null,
                 null
         );
+    }
+
+    public record ScopeStat(String scope,
+                            String minDate,
+                            String maxDate,
+                            long totalRows,
+                            long rowsOnTargetDate) {
+    }
+
+    public record HeatmapCell(String branch,
+                              String metric,
+                              Double val) {
     }
 }
