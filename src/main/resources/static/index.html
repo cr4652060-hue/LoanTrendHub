@@ -208,13 +208,25 @@
     const $ = (id)=>document.getElementById(id);
     const log = (s)=>{ const el=$('log'); el.value = (el.value?el.value+"\n":"") + s; el.scrollTop = el.scrollHeight; };
 
-    async function jget(url){
+    async function jget(url) {
         const r = await fetch(url);
-        if(!r.ok){
-            const t = await r.text().catch(()=> "");
-            throw new Error(`${r.status} ${r.statusText} :: ${t}`);
+        let body = null;
+        const t = await r.text().catch(() => "");
+        try {
+            body = t ? JSON.parse(t) : null;
+        } catch (_) {
+            body = null;
         }
-        return r.json();
+        if (!r.ok) {
+            const code = body && typeof body === 'object' ? body.code : '';
+            const message = body && typeof body === 'object' ? body.message : t;
+            const err = new Error(`${r.status} ${r.statusText} :: ${message || t || ''}`.trim());
+            err.status = r.status;
+            err.code = code || '';
+            err.payload = body;
+            throw err;
+        }
+        return body;
     }
     async function jpost(url, formData){
         const r = await fetch(url, { method:'POST', body: formData });
