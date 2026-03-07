@@ -355,14 +355,24 @@ function setMultiSelected(sel, values){
         return await jget(url);
     }
 
-    async function applyHeatDateByScope(scope){
-        const dr = await fetchDateRangeByScope(scope);
-        if(dr && dr.hasData && dr.max){
-            $('heatDate').value = dr.max;
-            return dr.max;
+    async function fetchLatestHeatDate(scope, metricsCsv){
+        if(!metricsCsv) return '';
+        const url = `/api/heatmap/latestDate?scope=${encodeURIComponent(scope || '')}&metrics=${encodeURIComponent(metricsCsv)}`;
+        const resp = await jget(url);
+        return resp?.hasData ? (resp.latestDate || '') : '';
+    }
+
+    async function syncHeatDate(scope){
+        let metrics = ($('heatMetrics').value || '').trim();
+        const selVals = getMultiSelected($('heatMetricsSel'));
+        if(selVals.length) metrics = selVals.join(',');
+        if(!metrics){
+            $('heatDate').value = '';
+            return '';
         }
-        $('heatDate').value = '';
-        return '';
+        const latest = await fetchLatestHeatDate(scope, metrics);
+        $('heatDate').value = latest || '';
+        return latest || '';
     }
 
     function pickGrowthDefaults(){
@@ -446,23 +456,7 @@ function setMultiSelected(sel, values){
         const data = resp.data;
         const title = resp?.title || `热力图：${getScopeName(resp?.scope || $('scopeSel')?.value || '')}`;
         const unit = resp?.unit || '';
-        const values = data
-            .map(d => Array.isArray(d) ? d[2] : null)
-            .map(v => Number(v))
-            .filter(Number.isFinite);
-        const sorted = [...values].sort((a,b)=>a-b);
-        let min = sorted.length ? sorted[Math.floor((sorted.length - 1) * 0.05)] : 0;
-        let max = sorted.length ? sorted[Math.floor((sorted.length - 1) * 0.95)] : 1;
-        if(!Number.isFinite(min) || !Number.isFinite(max)){
-            min = 0;
-            max = 1;
-        }
-        if(min === max){
-            max = min + 1;
-            if(sorted.length && Math.abs(min) < 1e-9){
-                log('[INFO] 当前所选指标波动极小，色阶区分不明显');
-            }
-        }
+
 
         heatChart.setOption({
             animation: false,
@@ -472,8 +466,9 @@ function setMultiSelected(sel, values){
                 formatter: (p) => {
                     const row = Array.isArray(p?.data) ? p.data : [];
                     const metric = x[row[0]] || '';
-                    const rawVal = row[2];
-                    const valText = formatDisplayNumber(rawVal, metric);
+                    const rawVal = row[3];
+                    const hasData = row[4] === true;
+                    const valText = hasData ? formatDisplayNumber(rawVal, metric) : '无数据';
                     const suffix = (valText === '无数据' || !unit || String(valText).includes('%')) ? '' : (' ' + unit);
                     return `${y[row[1]] || ''}<br/>${metric}：${valText}${suffix}`;
                 }
@@ -491,8 +486,8 @@ function setMultiSelected(sel, values){
                 splitArea: { show: true }
             },
             visualMap: {
-                min,
-                max,
+                min: -1,
+                max: 1,
                 calculable: true,
                 orient: 'horizontal',
                 left: 'center',
@@ -515,7 +510,7 @@ function setMultiSelected(sel, values){
                     formatter: (p) => {
                         const row = Array.isArray(p?.data) ? p.data : [];
                         const metric = x[row[0]] || '';
-                        const rawVal = row[2];
+                        const rawVal = row[3];
                         return rawVal === null || rawVal === undefined ? '-' : formatDisplayNumber(rawVal, metric);
                     }
                 },
@@ -632,7 +627,7 @@ function setMultiSelected(sel, values){
                 const common = Array.from($('heatMetricsSel').options).slice(0,3).map(o=>o.value);
                 setMultiSelected($('heatMetricsSel'), common);
             }
-            await applyHeatDateByScope(defaultScope);
+            await syncHeatDate(defaultScope);
             if($('deltaSel') && $('deltaSel').options.length>0 && !$('deltaSel').value){
                 $('deltaSel').value = $('deltaSel').options[0].value;
             }
@@ -711,18 +706,18 @@ function setMultiSelected(sel, values){
             let metrics = ($('heatMetrics').value || '').trim();
             const selVals = getMultiSelected($('heatMetricsSel'));
             if(selVals.length) metrics = selVals.join(',');
-            const dr = await fetchDateRangeByScope(scope);
-            if(!dr?.hasData || !dr?.max){
+            if(!metrics){ log('[WARN] 热力图指标不能为空'); return; }
+            const latest = await fetchLatestHeatDate(scope, metrics);
+            if(!latest){
                 $('heatDate').value = '';
-                log('[WARN] 当前口径无可用日期，无法渲染热力图');
+                log('[WARN] 当前口径+指标组合无可用日期，无法渲染热力图');
                 heatChart.clear();
                 return;
             }
             if(!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)){
-                date = dr.max;
-                $('heatDate').value = dr.max;
+                date = latest;
+                $('heatDate').value = latest;
             }
-            if(!metrics){ log('[WARN] 热力图指标不能为空'); return; }
             const url = `/api/heatmap?scope=${encodeURIComponent(scope)}&date=${encodeURIComponent(date)}&metrics=${encodeURIComponent(metrics)}`;
             let resp = await jget(url);
             if(resp && typeof resp === 'object' && resp.code && resp.message){
@@ -730,11 +725,11 @@ function setMultiSelected(sel, values){
                 return;
             }
             if((resp?.meta?.allNull === true || (resp?.data || []).length === 0) && date){
-                const dr = await fetchDateRangeByScope(scope);
-                if(dr?.max && dr.max !== date){
-                    $('heatDate').value = dr.max;
-                    log(`[WARN] 日期 ${date} 暂无数据，已回退到 ${dr.max}`);
-                    resp = await jget(`/api/heatmap?scope=${encodeURIComponent(scope)}&date=${encodeURIComponent(dr.max)}&metrics=${encodeURIComponent(metrics)}`);
+                const fallbackDate = await fetchLatestHeatDate(scope, metrics);
+                if(fallbackDate && fallbackDate !== date){
+                    $('heatDate').value = fallbackDate;
+                    log(`[WARN] 日期 ${date} 暂无数据，已回退到 ${fallbackDate}`);
+                    resp = await jget(`/api/heatmap?scope=${encodeURIComponent(scope)}&date=${encodeURIComponent(fallbackDate)}&metrics=${encodeURIComponent(metrics)}`);
                 }
             }
             if(!Array.isArray(resp?.data) || !Array.isArray(resp?.metrics) || !Array.isArray(resp?.branches)){
@@ -746,7 +741,7 @@ function setMultiSelected(sel, values){
                 if(!Array.isArray(row)) return;
                 const metric = resp.metrics?.[row[0]];
                 if(!metric) return;
-                const hasData = row[2] !== null && row[2] !== undefined && Number.isFinite(Number(row[2]));
+                const hasData = row[4] === true;
                 const stat = metricStats.get(metric) || { hasData: false };
                 if(hasData) stat.hasData = true;
                 metricStats.set(metric, stat);
@@ -830,9 +825,14 @@ function setMultiSelected(sel, values){
         $('btnUpload').addEventListener('click', doUpload);
         $('btnRefresh').addEventListener('click', refreshMeta);
         $('btnHeat').addEventListener('click', doHeat);
-        $('btnHeatPickAll')?.addEventListener('click', ()=>{ setMultiSelected($('heatMetricsSel'), Array.from($('heatMetricsSel')?.options||[]).map(o=>o.value)); });
-        $('btnHeatPickNone')?.addEventListener('click', ()=>{ setMultiSelected($('heatMetricsSel'), []); });
-        $('btnHeatPickDefault')?.addEventListener('click', ()=>{ const defaults = pickHeatDefaultMetrics(new Map(Array.from(($('heatMetricsSel')?.options||[])).map(o=>[o.value,{hasData:!o.disabled}] ))); setMultiSelected($('heatMetricsSel'), defaults); $('heatMetrics').value = defaults.join(','); });
+        $('btnHeatPickAll')?.addEventListener('click', async ()=>{ setMultiSelected($('heatMetricsSel'), Array.from($('heatMetricsSel')?.options||[]).map(o=>o.value)); $('heatMetrics').value = getMultiSelected($('heatMetricsSel')).join(','); await syncHeatDate($('scopeSel').value || ''); });
+        $('btnHeatPickNone')?.addEventListener('click', async ()=>{ setMultiSelected($('heatMetricsSel'), []); $('heatMetrics').value = ''; await syncHeatDate($('scopeSel').value || ''); });
+        $('btnHeatPickDefault')?.addEventListener('click', async ()=>{ const defaults = pickHeatDefaultMetrics(new Map(Array.from(($('heatMetricsSel')?.options||[])).map(o=>[o.value,{hasData:!o.disabled}] ))); setMultiSelected($('heatMetricsSel'), defaults); $('heatMetrics').value = defaults.join(','); await syncHeatDate($('scopeSel').value || ''); });
+        $('heatMetricsSel')?.addEventListener('change', async ()=>{
+            const vals = getMultiSelected($('heatMetricsSel'));
+            $('heatMetrics').value = vals.join(',');
+            await syncHeatDate($('scopeSel').value || '');
+        });
         $('btnTrend').addEventListener('click', doTrendMulti);
         $('btnGrowth').addEventListener('click', doGrowth);
 
@@ -847,7 +847,7 @@ function setMultiSelected(sel, values){
             }
             $('branchSearch').value='';
             renderBranchList();
-            await applyHeatDateByScope(scope);
+            await syncHeatDate(scope);
             log(`[OK] 切换口径：${scope}，branches=${ALL_BRANCHES.length}`);
             await doHeat();
         }catch(e){

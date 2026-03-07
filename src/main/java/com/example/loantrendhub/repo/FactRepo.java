@@ -221,7 +221,14 @@ public class FactRepo {
         String sql = "SELECT DISTINCT biz_date FROM fact_metric_daily WHERE scope = ? AND biz_date BETWEEN ? AND ? ORDER BY biz_date";
         return jdbcTemplate.queryForList(sql, String.class, scope, start, end);
     }
-
+    public List<String> findDatesDesc(String scope) {
+        if (scope == null || scope.isBlank()) {
+            String sql = "SELECT DISTINCT biz_date FROM fact_metric_daily ORDER BY biz_date DESC";
+            return jdbcTemplate.queryForList(sql, String.class);
+        }
+        String sql = "SELECT DISTINCT biz_date FROM fact_metric_daily WHERE scope = ? ORDER BY biz_date DESC";
+        return jdbcTemplate.queryForList(sql, String.class, scope);
+    }
     public List<FactRow> findByDateScopeMetrics(String date, String scope, List<String> metrics) {
         if (scope == null || scope.isBlank() || metrics == null || metrics.isEmpty()) {
             return List.of();

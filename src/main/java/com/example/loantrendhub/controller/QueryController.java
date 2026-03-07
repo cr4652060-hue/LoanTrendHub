@@ -39,6 +39,19 @@ public class QueryController {
         return queryService.heatmap(scope, date, splitCsv(metrics));
     }
 
+    @GetMapping("/heatmap/latestDate")
+    public Map<String, Object> heatmapLatestDate(
+            @RequestParam(name = "scope") String scope,
+            @RequestParam(name = "metrics") String metrics
+    ) {
+        String latest = queryService.latestHeatmapDate(scope, splitCsv(metrics));
+        return Map.of(
+                "scope", scope,
+                "metrics", metrics,
+                "latestDate", latest,
+                "hasData", latest != null && !latest.isBlank()
+        );
+    }
     /** 正式接口：多网点/多指标趋势 */
     @GetMapping("/trend/multi")
     public SeriesResponse multiTrend(

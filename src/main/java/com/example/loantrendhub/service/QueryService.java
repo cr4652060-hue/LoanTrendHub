@@ -72,7 +72,6 @@ public class QueryService {
         );
     }
 
-
     public List<String> scopes() {
         ensureMetadataReady();
         return factRepo.findScopes();
@@ -146,7 +145,90 @@ public class QueryService {
                 "dateRange", dateRange
         );
     }
+    public String latestHeatmapDate(String scope, List<String> metrics) {
+        String resolvedScope = resolveScope(scope);
+        List<String> selectedMetrics = (metrics == null ? List.<String>of() : metrics).stream()
+                .map(v -> v == null ? "" : v.trim())
+                .filter(v -> !v.isBlank())
+                .distinct()
+                .toList();
+        if (selectedMetrics.isEmpty()) {
+            return dateRangeByScope(resolvedScope).getOrDefault("max", "").toString();
+        }
+        List<String> branches = branches(resolvedScope);
+        if (branches.isEmpty()) {
+            return "";
+        }
+        Map<String, MetricDef> defs = metricService.metricMap();
+        List<String> dates = factRepo.findDatesDesc(resolvedScope);
+        for (String d : dates) {
+            Map<String, Double> matrixValues = buildHeatmapMatrixValues(resolvedScope, d, branches, selectedMetrics, defs);
+            boolean anyData = matrixValues.values().stream().anyMatch(v -> v != null && Double.isFinite(v));
+            if (anyData) {
+                return d;
+            }
+        }
+        return "";
+    }
 
+    private Map<String, Double> buildHeatmapMatrixValues(String scope,
+                                                         String date,
+                                                         List<String> branches,
+                                                         List<String> selectedMetrics,
+                                                         Map<String, MetricDef> defs) {
+        List<String> rawMetrics = new ArrayList<>();
+        List<String> derivedMetrics = new ArrayList<>();
+        for (String metric : selectedMetrics) {
+            MetricDef md = defs.get(metric);
+            if (md != null && ("DELTA".equalsIgnoreCase(md.kind()) || "RATE".equalsIgnoreCase(md.kind()))) {
+                derivedMetrics.add(metric);
+            } else {
+                rawMetrics.add(metric);
+            }
+        }
+
+        Map<String, Double> matrixValues = new HashMap<>();
+        if (!rawMetrics.isEmpty()) {
+            List<FactRepo.HeatmapCell> source = factRepo.findHeatmapMatrix(date, scope, rawMetrics);
+            for (FactRepo.HeatmapCell row : source) {
+                matrixValues.put(row.branch() + "\u0001" + row.metric(), row.val());
+            }
+        }
+        if (!derivedMetrics.isEmpty()) {
+            matrixValues.putAll(computeDerivedHeatmapValues(scope, date, branches, derivedMetrics, defs));
+        }
+        return matrixValues;
+    }
+
+    private boolean isLevelMetric(String metric, Map<String, MetricDef> defs) {
+        MetricDef md = defs.get(metric);
+        return md != null && "LEVEL".equalsIgnoreCase(md.kind());
+    }
+
+    private Double normalizeHeatColorValue(Double rawValue,
+                                           Double minVal,
+                                           Double maxVal,
+                                           boolean levelMetric) {
+        if (rawValue == null || minVal == null || maxVal == null || !Double.isFinite(rawValue) || !Double.isFinite(minVal) || !Double.isFinite(maxVal)) {
+            return null;
+        }
+        if (Double.compare(minVal, maxVal) == 0) {
+            return 0d;
+        }
+        if (levelMetric) {
+            double norm01 = (rawValue - minVal) / (maxVal - minVal);
+            return (norm01 * 2.0) - 1.0;
+        }
+        if (minVal < 0 && maxVal > 0) {
+            double absMax = Math.max(Math.abs(minVal), Math.abs(maxVal));
+            if (absMax < EPSILON) {
+                return 0d;
+            }
+            return rawValue / absMax;
+        }
+        double norm01 = (rawValue - minVal) / (maxVal - minVal);
+        return (norm01 * 2.0) - 1.0;
+    }
     public HeatmapResponse heatmap(String scope, String date, List<String> metrics) {
         String resolvedScope = resolveScope(scope);
         List<String> selectedMetrics = (metrics == null ? List.<String>of() : metrics).stream()
@@ -164,7 +246,7 @@ public class QueryService {
                     resolvedScope,
                     List.of(),
                     branches,
-                    0d,
+                    -1d,
                     1d,
                     List.of(),
                     List.of(),
@@ -172,7 +254,16 @@ public class QueryService {
                     new HeatmapResponse.Meta(date, resolvedScope, "", 0, true)
             );
         }
-
+        String effectiveDate = (date == null || date.isBlank()) ? latestHeatmapDate(resolvedScope, selectedMetrics) : date;
+        Map<String, Double> matrixValues = buildHeatmapMatrixValues(resolvedScope, effectiveDate, branches, selectedMetrics, defs);
+        boolean hasAnyData = matrixValues.values().stream().anyMatch(v -> v != null && Double.isFinite(v));
+        if (!hasAnyData) {
+            String latest = latestHeatmapDate(resolvedScope, selectedMetrics);
+            if (latest != null && !latest.isBlank() && !latest.equals(effectiveDate)) {
+                effectiveDate = latest;
+                matrixValues = buildHeatmapMatrixValues(resolvedScope, effectiveDate, branches, selectedMetrics, defs);
+            }
+        }
         Map<String, Integer> metricIdx = new HashMap<>();
         for (int i = 0; i < selectedMetrics.size(); i++) {
             metricIdx.put(selectedMetrics.get(i), i);
@@ -182,34 +273,26 @@ public class QueryService {
         for (int i = 0; i < branches.size(); i++) {
             branchIdx.put(branches.get(i), i);
         }
-        List<String> rawMetrics = new ArrayList<>();
-        List<String> derivedMetrics = new ArrayList<>();
-        for (String metric : selectedMetrics) {
-            MetricDef md = defs.get(metric);
-            if (md != null && ("DELTA".equalsIgnoreCase(md.kind()) || "RATE".equalsIgnoreCase(md.kind()))) {
-                derivedMetrics.add(metric);
-            } else {
-                rawMetrics.add(metric);
-            }
-        }
-
-        Map<String, Double> matrixValues = new HashMap<>();
-        if (!rawMetrics.isEmpty()) {
-            List<FactRepo.HeatmapCell> source = factRepo.findHeatmapMatrix(date, resolvedScope, rawMetrics);
-            for (FactRepo.HeatmapCell row : source) {
-                matrixValues.put(row.branch() + "\u0001" + row.metric(), row.val());
-            }
-        }
-        if (!derivedMetrics.isEmpty()) {
-            matrixValues.putAll(computeDerivedHeatmapValues(resolvedScope, date, branches, derivedMetrics, defs));
-        }
 
         List<List<Object>> data = new ArrayList<>();
         List<HeatmapResponse.Cell> cells = new ArrayList<>();
-        Double min = null;
-        Double max = null;
         int dataRowCount = 0;
-
+        Map<String, Double> metricMin = new HashMap<>();
+        Map<String, Double> metricMax = new HashMap<>();
+        for (String metric : selectedMetrics) {
+            Double minVal = null;
+            Double maxVal = null;
+            for (String branch : branches) {
+                Double v = matrixValues.get(branch + "\u0001" + metric);
+                if (v == null || !Double.isFinite(v)) {
+                    continue;
+                }
+                minVal = minVal == null ? v : Math.min(minVal, v);
+                maxVal = maxVal == null ? v : Math.max(maxVal, v);
+            }
+            metricMin.put(metric, minVal);
+            metricMax.put(metric, maxVal);
+        }
         for (String branch : branches) {
             Integer yi = branchIdx.get(branch);
             if (yi == null) {
@@ -220,31 +303,21 @@ public class QueryService {
                 if (xi == null) {
                     continue;
                 }
-                Double cellVal = matrixValues.get(branch + "\u0001" + metric);
-                boolean hasData = cellVal != null && Double.isFinite(cellVal);
-                Double safeVal = hasData ? cellVal : null;
-                data.add(Arrays.asList(xi, yi, safeVal, hasData));
-                cells.add(new HeatmapResponse.Cell(branch, metric, safeVal, hasData));
-                if (!hasData) {
-                    continue;
+                Double rawValue = matrixValues.get(branch + "\u0001" + metric);
+                boolean hasData = rawValue != null && Double.isFinite(rawValue);
+                Double safeRaw = hasData ? rawValue : null;
+                Double colorValue = hasData
+                        ? normalizeHeatColorValue(safeRaw, metricMin.get(metric), metricMax.get(metric), isLevelMetric(metric, defs))
+                        : null;
+                data.add(Arrays.asList(xi, yi, colorValue, safeRaw, hasData));
+                cells.add(new HeatmapResponse.Cell(branch, metric, safeRaw, hasData));
+                if (hasData) {
+                    dataRowCount++;
                 }
-                double v = safeVal;
-                dataRowCount++;
-                min = (min == null) ? v : Math.min(min, v);
-                max = (max == null) ? v : Math.max(max, v);
             }
         }
 
         boolean allNull = dataRowCount == 0;
-        if (min == null) {
-            min = 0d;
-        }
-        if (max == null) {
-            max = 1d;
-        }
-        if (Double.compare(min, max) == 0) {
-            max = min + 1d;
-        }
 
         Map<String, HeatmapResponse.MetricMeta> metricDefs = new LinkedHashMap<>();
         for (String metric : selectedMetrics) {
@@ -253,17 +326,17 @@ public class QueryService {
         }
 
         return new HeatmapResponse(
-                date,
+                effectiveDate,
                 resolvedScope,
                 selectedMetrics,
                 branches,
-                min,
-                max,
+                -1d,
+                1d,
                 data,
                 cells,
                 metricDefs,
                 new HeatmapResponse.Meta(
-                        date,
+                        effectiveDate,
                         resolvedScope,
                         String.join(",", selectedMetrics),
                         dataRowCount,
@@ -271,6 +344,7 @@ public class QueryService {
                 )
         );
     }
+
 
     private Map<String, Double> computeDerivedHeatmapValues(String scope,
                                                             String date,
