@@ -54,17 +54,24 @@ public class QueryService {
     }
 
     public Map<String, Object> dateRange() {
+        return dateRangeByScope(null);
+    }
+
+    public Map<String, Object> dateRangeByScope(String scope) {
         ensureMetadataReady();
-        Map<String, String> raw = factRepo.dateRange();
+        String resolvedScope = scope == null || scope.isBlank() ? "" : resolveScope(scope);
+        Map<String, String> raw = resolvedScope.isBlank() ? factRepo.dateRange() : factRepo.dateRangeByScope(resolvedScope);
         String min = raw.getOrDefault("min", "");
         String max = raw.getOrDefault("max", "");
         boolean hasData = min != null && !min.isBlank() && max != null && !max.isBlank();
         return Map.of(
+                "scope", resolvedScope,
                 "min", hasData ? min : "",
                 "max", hasData ? max : "",
                 "hasData", hasData
         );
     }
+
 
     public List<String> scopes() {
         ensureMetadataReady();

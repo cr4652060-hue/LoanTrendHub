@@ -26,8 +26,8 @@ public class QueryController {
 
     /** 前端初始化：自动带出库内已有数据日期区间 */
     @GetMapping("/dateRange")
-    public Object dateRange() {
-        return queryService.dateRange();
+    public Object dateRange(@RequestParam(name = "scope", required = false) String scope) {
+        return queryService.dateRangeByScope(scope);
     }
 
     @GetMapping("/heatmap")

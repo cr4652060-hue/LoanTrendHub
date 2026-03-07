@@ -71,7 +71,23 @@ public class FactRepo {
             return Map.of("min", min, "max", max);
         });
     }
-
+    public Map<String, String> dateRangeByScope(String scope) {
+        if (scope == null || scope.isBlank()) {
+            return dateRange();
+        }
+        String sql = "SELECT MIN(biz_date) AS min_date, MAX(biz_date) AS max_date FROM fact_metric_daily WHERE scope = ?";
+        return jdbcTemplate.query(sql, rs -> {
+            String min = "";
+            String max = "";
+            if (rs.next()) {
+                String a = rs.getString("min_date");
+                String b = rs.getString("max_date");
+                min = a == null ? "" : a;
+                max = b == null ? "" : b;
+            }
+            return Map.of("min", min, "max", max);
+        }, scope.trim());
+    }
     public List<String> findScopes() {
         return jdbcTemplate.queryForList(
                 "SELECT DISTINCT scope FROM fact_metric_daily WHERE scope IS NOT NULL AND TRIM(scope) <> '' ORDER BY scope",
