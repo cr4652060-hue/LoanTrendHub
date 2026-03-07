@@ -713,25 +713,24 @@ function setMultiSelected(sel, values){
             if(selVals.length) metrics = selVals.join(',');
             $('heatMetrics').value = metrics;
             if(!metrics){ log('[WARN] 热力图指标不能为空'); return; }
-            const latest = await fetchLatestHeatDate(scope, metrics);
-            if(!latest){
-                $('heatDate').value = '';
+            let date = $('heatDate').value || '';
+            if(!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)){
+                await syncHeatDate(scope);
+                date = $('heatDate').value || '';
+            }
+            if(!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)){
                 log('[WARN] 当前口径与所选指标暂无可用热力图日期');
                 heatChart.clear();
                 return;
             }
-            let date = $('heatDate').value || '';
-            if(!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)){
-                date = latest;
-                $('heatDate').value = latest;
-            }
+            const latest = await fetchLatestHeatDate(scope, metrics);
             const fetchHeatResp = async (targetDate) => await jget(`/api/heatmap?scope=${encodeURIComponent(scope)}&date=${encodeURIComponent(targetDate)}&metrics=${encodeURIComponent(metrics)}`);
             let resp = await fetchHeatResp(date);
             if(resp && typeof resp === 'object' && resp.code && resp.message){
                 log('[ERR] 热力图失败: ' + resp.message);
                 return;
             }
-            if((resp?.meta?.allNull === true || (resp?.data || []).length === 0) && date !== latest){
+            if(latest && (resp?.meta?.allNull === true || (resp?.data || []).length === 0) && date !== latest){
                 $('heatDate').value = latest;
                 log(`[WARN] 日期 ${date} 暂无数据，已回退到 ${latest}`);
                 date = latest;

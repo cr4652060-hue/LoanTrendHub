@@ -216,19 +216,38 @@ public class QueryService {
         if (rawValue == null || minVal == null || maxVal == null || !Double.isFinite(rawValue) || !Double.isFinite(minVal) || !Double.isFinite(maxVal)) {
             return null;
         }
-        if (Double.compare(minVal, maxVal) == 0) {
-            return 0d;
-        }
         if (levelMetric) {
+            if (Double.compare(minVal, maxVal) == 0) {
+                return 0d;
+            }
             double norm01 = (rawValue - minVal) / (maxVal - minVal);
             double scaled = (norm01 * 2.0) - 1.0;
             return Math.max(-1d, Math.min(1d, scaled));
         }
-        double absMax = Math.max(Math.abs(minVal), Math.abs(maxVal));
-        if (absMax < EPSILON) {
-            return 0d;
+
+        double scaled;
+        if (minVal < 0d && maxVal > 0d) {
+            double absMax = Math.max(Math.abs(minVal), Math.abs(maxVal));
+            if (absMax < EPSILON) {
+                return 0d;
+            }
+            scaled = rawValue / absMax;
+        } else if (minVal >= 0d && maxVal > 0d) {
+            if (Double.compare(minVal, maxVal) == 0) {
+                scaled = 0.5d;
+            } else {
+                scaled = (rawValue - minVal) / (maxVal - minVal);
+            }
+        } else if (minVal < 0d && maxVal <= 0d) {
+            if (Double.compare(minVal, maxVal) == 0) {
+                scaled = -0.5d;
+            } else {
+                double norm01 = (rawValue - minVal) / (maxVal - minVal);
+                scaled = -1d + norm01;
+            }
+        } else {
+            scaled = 0d;
         }
-        double scaled = rawValue / absMax;
         return Math.max(-1d, Math.min(1d, scaled));
     }
     public HeatmapResponse heatmap(String scope, String date, List<String> metrics) {
