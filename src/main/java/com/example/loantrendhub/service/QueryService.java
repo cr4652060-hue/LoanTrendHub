@@ -234,16 +234,17 @@ public class QueryService {
             scaled = rawValue / absMax;
         } else if (minVal >= 0d && maxVal > 0d) {
             if (Double.compare(minVal, maxVal) == 0) {
-                scaled = 0.5d;
+                scaled = 0.6d;
             } else {
-                scaled = (rawValue - minVal) / (maxVal - minVal);
+                double norm01 = (rawValue - minVal) / (maxVal - minVal);
+                scaled = 0.2d + norm01 * 0.8d;
             }
         } else if (minVal < 0d && maxVal <= 0d) {
             if (Double.compare(minVal, maxVal) == 0) {
-                scaled = -0.5d;
+                scaled = -0.6d;
             } else {
                 double norm01 = (rawValue - minVal) / (maxVal - minVal);
-                scaled = -1d + norm01;
+                scaled = -1d + norm01 * 0.8d;
             }
         } else {
             scaled = 0d;
