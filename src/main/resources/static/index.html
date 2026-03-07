@@ -332,15 +332,13 @@ function setMultiSelected(sel, values){
     function updateHeatMetricOptionsAvailability(dataMap){
         const sel = $('heatMetricsSel');
         if(!sel) return;
-        const selected = new Set(getMultiSelected(sel));
         Array.from(sel.options || []).forEach(opt => {
             const metric = String(opt.value || '');
             const def = findMetricDef(metric);
             const baseLabel = def ? `${(def.name ?? metric)}（${metric}${def.kind ? ' / ' + def.kind : ''}）` : metric;
+            const hasStat = dataMap.has(metric);
             const available = isMetricAvailableOnDate(metric, dataMap);
-            opt.textContent = available ? baseLabel : `${baseLabel}（无数据）`;
-            opt.disabled = !available;
-            if(!available) opt.selected = false;
+            opt.textContent = (hasStat && !available) ? `${baseLabel}（无数据）` : baseLabel;
         });
         $('heatMetrics').value = getMultiSelected(sel).join(',');
     }
@@ -513,7 +511,7 @@ function setMultiSelected(sel, values){
                 type: 'heatmap',
                 data,
                 label: {
-                    show: true,
+                    show: false,
                     formatter: (p) => {
                         const row = Array.isArray(p?.data) ? p.data : [];
                         const metric = x[row[0]] || '';
@@ -713,13 +711,16 @@ function setMultiSelected(sel, values){
             let metrics = ($('heatMetrics').value || '').trim();
             const selVals = getMultiSelected($('heatMetricsSel'));
             if(selVals.length) metrics = selVals.join(',');
-            if(!date){
-                date = await applyHeatDateByScope(scope);
-                if(!date){
-                    log('[WARN] 当前口径无可用日期，无法渲染热力图');
-                    heatChart.clear();
-                    return;
-                }
+            const dr = await fetchDateRangeByScope(scope);
+            if(!dr?.hasData || !dr?.max){
+                $('heatDate').value = '';
+                log('[WARN] 当前口径无可用日期，无法渲染热力图');
+                heatChart.clear();
+                return;
+            }
+            if(!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)){
+                date = dr.max;
+                $('heatDate').value = dr.max;
             }
             if(!metrics){ log('[WARN] 热力图指标不能为空'); return; }
             const url = `/api/heatmap?scope=${encodeURIComponent(scope)}&date=${encodeURIComponent(date)}&metrics=${encodeURIComponent(metrics)}`;
@@ -751,12 +752,6 @@ function setMultiSelected(sel, values){
                 metricStats.set(metric, stat);
             });
             updateHeatMetricOptionsAvailability(metricStats);
-            const currentSelected = getMultiSelected($('heatMetricsSel'));
-            if(currentSelected.length === 0){
-                const defaults = pickHeatDefaultMetrics(metricStats);
-                setMultiSelected($('heatMetricsSel'), defaults);
-                $('heatMetrics').value = defaults.join(',');
-            }
             if(resp?.meta?.allNull === true){
                 heatChart.clear();
                 log('[WARN] 当前日期/口径/指标下无热力图数据');
