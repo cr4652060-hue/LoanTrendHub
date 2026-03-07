@@ -376,9 +376,17 @@ function setMultiSelected(sel, values){
     }
 
     function renderHeatmap(resp){
+        if(!$('heatChart')){
+            log('[ERR] 热力图失败: 图表容器不存在');
+            return;
+        }
         const x = resp?.x || resp?.metrics || [];
         const y = resp?.y || resp?.branches || [];
         const data = resp?.data || [];
+        if(!Array.isArray(x) || !Array.isArray(y) || !Array.isArray(data)){
+            log('[ERR] 热力图失败: 返回结构异常（x/y/data 必须为数组）');
+            return;
+        }
         const title = resp?.title || `热力图：${getScopeName(resp?.scope || $('scopeSel')?.value || '')}`;
         const unit = resp?.unit || '';
         let min = Number.isFinite(resp?.min) ? resp.min : null;
@@ -471,16 +479,10 @@ function setMultiSelected(sel, values){
         $('badgeStatus').textContent = '加载元数据…';
         try{
             const meta = await jget('/api/meta');
-            if(meta?.code === 'DB_NOT_READY'){
-                $('badgeStatus').textContent = '数据库未就绪';
-                setBadge('badgeRange', '-');
-                setBadge('badgeScope', '-');
-                setBadge('badgeBranchCnt', '-');
-                log('[ERR] ' + (meta?.message || '数据库初始化未完成，请检查 schema-mysql.sql 是否执行'));
-                return;
-            }
+
 
             const scopesRaw = Array.isArray(meta?.scopes) ? meta.scopes : [];
+            const scopeStatsRaw = Array.isArray(meta?.scopeStats) ? meta.scopeStats : [];
             const metricsRaw = Array.isArray(meta?.metrics) ? meta.metrics : [];
             const branchesRaw = Array.isArray(meta?.branches) ? meta.branches : [];
             if(!Array.isArray(meta?.scopes) || !Array.isArray(meta?.metrics) || !Array.isArray(meta?.branches)){
@@ -504,10 +506,13 @@ function setMultiSelected(sel, values){
                 log('[INFO] 当前暂无数据，请先批量导入 Excel');
             }
 
-            const scopes = scopesRaw.map(s => ({
-                key: s,
-                name: s === 'ADJ' ? '实体贷款（还原剔转）' : '实体贷款（纯账面）'
-            }));
+            const scopes = scopesRaw.map(s => {
+                const hit = scopeStatsRaw.find(row => String(row?.key || '') === String(s));
+                return {
+                    key: s,
+                    name: hit?.name || s
+                };
+            });
             SCOPE_OPTIONS = (scopes || [])
                 .map(s => ({ key: (s?.key || ''), name: (s?.name || s?.key || '') }))
                 .filter(x => x.key);
@@ -529,7 +534,7 @@ function setMultiSelected(sel, values){
             fillSelect($('deltaSel'), deltaMetrics.length ? deltaMetrics : METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
             fillSelect($('baseSel'), baseMetrics.length ? baseMetrics : METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
 
-            let defaultScope = SCOPE_OPTIONS?.[0]?.key ?? 'PHY';
+            let defaultScope = (meta?.suggestedScope || SCOPE_OPTIONS?.[0]?.key || '');
 
             const defaultMetric = METRIC_OPTIONS?.[0]?.metric ?? METRIC_OPTIONS?.[0]?.key ?? '';
             $('scopeSel').value = defaultScope;
@@ -556,6 +561,14 @@ function setMultiSelected(sel, values){
             pickGrowthDefaults();
             log(`[OK] 元数据加载完成：scopes=${(scopes||[]).length} metrics=${(metrics||[]).length} branches=${ALL_BRANCHES.length}`);
         }catch(e){
+            if(e?.code === 'DB_NOT_READY'){
+                $('badgeStatus').textContent = '数据库未就绪';
+                setBadge('badgeRange', '-');
+                setBadge('badgeScope', '-');
+                setBadge('badgeBranchCnt', '-');
+                log('[ERR] 数据库初始化未完成，请先执行 schema-mysql.sql');
+                return;
+            }
             $('badgeStatus').textContent = '初始化失败';
             log(`[ERR] 初始化失败：${e.message}`);
             console.error(e);
@@ -620,10 +633,23 @@ function setMultiSelected(sel, values){
             if(!metrics){ log('[WARN] 热力图指标不能为空'); return; }
             const url = `/api/heatmap?scope=${encodeURIComponent(scope)}&date=${encodeURIComponent(date)}&metrics=${encodeURIComponent(metrics)}`;
             const resp = await jget(url);
+            if(resp && typeof resp === 'object' && resp.code && resp.message){
+                log('[ERR] 热力图失败: ' + resp.message);
+                return;
+            }
+            if(!Array.isArray(resp?.data) || !Array.isArray(resp?.metrics) || !Array.isArray(resp?.branches)){
+                log('[ERR] 热力图失败: 返回字段缺失（metrics/branches/data）');
+                return;
+            }
+            if(resp.data.length === 0){
+                heatChart.clear();
+                log('[WARN] 热力图无数据');
+                return;
+            }
             renderHeatmap(resp);
             log('[OK] 热力图刷新完成');
         }catch(e){
-            log('[ERR] 热力图失败：' + e.message);
+            log('[ERR] 热力图失败: ' + e.message);
             console.error(e);
         }
     }
@@ -683,17 +709,18 @@ function setMultiSelected(sel, values){
         }
     }
 
-    document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click', ()=>activeTab(t.dataset.tab)));
-    $('btnUpload').addEventListener('click', doUpload);
-    $('btnRefresh').addEventListener('click', refreshMeta);
-    $('btnHeat').addEventListener('click', doHeat);
-    $('btnHeatPickAll')?.addEventListener('click', ()=>{ setMultiSelected($('heatMetricsSel'), Array.from($('heatMetricsSel')?.options||[]).map(o=>o.value)); });
-    $('btnHeatPickNone')?.addEventListener('click', ()=>{ setMultiSelected($('heatMetricsSel'), []); });
-    $('btnHeatPickDefault')?.addEventListener('click', ()=>{ const defaults=['BAL_TOTAL','CNT_TOTAL','DOD_BAL']; setMultiSelected($('heatMetricsSel'), defaults); $('heatMetrics').value = defaults.join(','); });
-    $('btnTrend').addEventListener('click', doTrendMulti);
-    $('btnGrowth').addEventListener('click', doGrowth);
+    function bindEvents(){
+        document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click', ()=>activeTab(t.dataset.tab)));
+        $('btnUpload').addEventListener('click', doUpload);
+        $('btnRefresh').addEventListener('click', refreshMeta);
+        $('btnHeat').addEventListener('click', doHeat);
+        $('btnHeatPickAll')?.addEventListener('click', ()=>{ setMultiSelected($('heatMetricsSel'), Array.from($('heatMetricsSel')?.options||[]).map(o=>o.value)); });
+        $('btnHeatPickNone')?.addEventListener('click', ()=>{ setMultiSelected($('heatMetricsSel'), []); });
+        $('btnHeatPickDefault')?.addEventListener('click', ()=>{ const defaults=['BAL_TOTAL','CNT_TOTAL','DOD_BAL']; setMultiSelected($('heatMetricsSel'), defaults); $('heatMetrics').value = defaults.join(','); });
+        $('btnTrend').addEventListener('click', doTrendMulti);
+        $('btnGrowth').addEventListener('click', doGrowth);
 
-    $('scopeSel').addEventListener('change', async ()=>{
+        $('scopeSel').addEventListener('change', async ()=>{
         const scope = $('scopeSel').value || '';
         setBadge('badgeScope', getScopeName(scope) || '-');
         try{
@@ -708,20 +735,29 @@ function setMultiSelected(sel, values){
         }catch(e){
             log('[ERR] 获取网点失败：' + e.message);
         }
-    });
+        });
 
-    $('branchSearch').addEventListener('input', renderBranchList);
-    $('btnSelectAll').addEventListener('click', ()=> Array.from($('branchMulti').options).forEach(o=>o.selected=true));
-    $('btnClear').addEventListener('click', ()=> Array.from($('branchMulti').options).forEach(o=>o.selected=false));
-    window.addEventListener('resize', ()=>{ heatChart.resize(); trendChart.resize(); growthChart.resize(); });
-    $('deltaSel')?.addEventListener('change', ()=>{
-        $('deltaMetric').value = $('deltaSel').value || '';
-        pickGrowthDefaults();
-    });
-    $('baseSel')?.addEventListener('change', ()=>{
-        $('baseMetric').value = $('baseSel').value || '';
-    });
-     vv();
+        $('branchSearch').addEventListener('input', renderBranchList);
+        $('btnSelectAll').addEventListener('click', ()=> Array.from($('branchMulti').options).forEach(o=>o.selected=true));
+        $('btnClear').addEventListener('click', ()=> Array.from($('branchMulti').options).forEach(o=>o.selected=false));
+        window.addEventListener('resize', ()=>{ heatChart.resize(); trendChart.resize(); growthChart.resize(); });
+        $('deltaSel')?.addEventListener('change', ()=>{
+            $('deltaMetric').value = $('deltaSel').value || '';
+            pickGrowthDefaults();
+        });
+        $('baseSel')?.addEventListener('change', ()=>{
+            $('baseMetric').value = $('baseSel').value || '';
+        });
+    }
+
+    async function initPage(){
+        bindEvents();
+        await refreshMeta();
+        if($('badgeStatus').textContent === '数据库未就绪') return;
+        await doHeat();
+    }
+
+    document.addEventListener('DOMContentLoaded', initPage);
 </script>
 </body>
 </html>
