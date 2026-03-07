@@ -359,7 +359,7 @@ function setMultiSelected(sel, values){
         if(!metricsCsv) return '';
         const url = `/api/heatmap/latestDate?scope=${encodeURIComponent(scope || '')}&metrics=${encodeURIComponent(metricsCsv)}`;
         const resp = await jget(url);
-        return resp?.hasData ? (resp.latestDate || '') : '';
+        return resp?.hasData ? (resp.date || resp.latestDate || '') : '';
     }
 
     async function syncHeatDate(scope){
@@ -371,8 +371,12 @@ function setMultiSelected(sel, values){
             return '';
         }
         const latest = await fetchLatestHeatDate(scope, metrics);
-        $('heatDate').value = latest || '';
-        return latest || '';
+        if(latest){
+            $('heatDate').value = latest;
+            return latest;
+        }
+        log('[WARN] 当前口径与所选指标暂无可用热力图日期');
+        return '';
     }
 
     function pickGrowthDefaults(){
@@ -453,7 +457,7 @@ function setMultiSelected(sel, values){
         }
         const x = resp.metrics;
         const y = resp.branches;
-        const data = resp.data;
+        const data = (resp.data || []).filter(row => Array.isArray(row) && row.length === 5);
         const title = resp?.title || `热力图：${getScopeName(resp?.scope || $('scopeSel')?.value || '')}`;
         const unit = resp?.unit || '';
 
@@ -492,7 +496,7 @@ function setMultiSelected(sel, values){
                 orient: 'horizontal',
                 left: 'center',
                 bottom: 50,
-                inRange: { color: ['#eff6ff', '#93c5fd', '#3b82f6', '#1d4ed8', '#1e3a8a'] },
+                inRange: { color: ['#1d4ed8', '#93c5fd', '#f8fafc', '#fca5a5', '#b91c1c'] },
                 outOfRange: { color: ['#f3f4f6'] }
             },
             dataZoom: [
@@ -709,8 +713,7 @@ function setMultiSelected(sel, values){
             if(!metrics){ log('[WARN] 热力图指标不能为空'); return; }
             const latest = await fetchLatestHeatDate(scope, metrics);
             if(!latest){
-                $('heatDate').value = '';
-                log('[WARN] 当前口径+指标组合无可用日期，无法渲染热力图');
+                log('[WARN] 当前口径与所选指标暂无可用热力图日期');
                 heatChart.clear();
                 return;
             }
@@ -736,6 +739,11 @@ function setMultiSelected(sel, values){
                 log('[ERR] 热力图失败: 返回字段缺失（metrics/branches/data）');
                 return;
             }
+            const invalidRow = (resp.data || []).find(row => !Array.isArray(row) || row.length !== 5);
+            if(invalidRow){
+                log('[ERR] 热力图失败: data 单元结构必须为 [xIndex,yIndex,colorValue,rawValue,hasData]');
+                return;
+            }
             const metricStats = new Map();
             (resp.data || []).forEach(row => {
                 if(!Array.isArray(row)) return;
@@ -756,6 +764,22 @@ function setMultiSelected(sel, values){
                 heatChart.clear();
                 log('[WARN] 热力图无数据');
                 return;
+            }
+            const hasAnyData = (resp.data || []).some(row => Array.isArray(row) && row[4] === true);
+            if(!hasAnyData){
+                heatChart.clear();
+                log('[WARN] 当前日期/口径/指标下无热力图数据');
+                return;
+            }
+            const signedColorValues = (resp.data || [])
+                .filter(row => Array.isArray(row) && row[4] === true)
+                .map(row => Number(row[2]))
+                .filter(v => Number.isFinite(v));
+            if(signedColorValues.length > 0){
+                const maxAbs = Math.max(...signedColorValues.map(v => Math.abs(v)));
+                if(maxAbs < 0.05){
+                    log('[INFO] 当前所选指标波动极小，色阶区分不明显');
+                }
             }
             renderHeatmap(resp);
             log('[OK] 热力图刷新完成');

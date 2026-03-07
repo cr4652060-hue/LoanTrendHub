@@ -153,11 +153,12 @@ public class QueryService {
                 .distinct()
                 .toList();
         if (selectedMetrics.isEmpty()) {
-            return dateRangeByScope(resolvedScope).getOrDefault("max", "").toString();
+            String max = dateRangeByScope(resolvedScope).getOrDefault("max", "").toString();
+            return max.isBlank() ? null : max;
         }
         List<String> branches = branches(resolvedScope);
         if (branches.isEmpty()) {
-            return "";
+            return null;
         }
         Map<String, MetricDef> defs = metricService.metricMap();
         List<String> dates = factRepo.findDatesDesc(resolvedScope);
@@ -168,7 +169,7 @@ public class QueryService {
                 return d;
             }
         }
-        return "";
+        return null;
     }
 
     private Map<String, Double> buildHeatmapMatrixValues(String scope,

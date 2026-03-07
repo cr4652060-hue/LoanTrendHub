@@ -48,6 +48,7 @@ public class QueryController {
         return Map.of(
                 "scope", scope,
                 "metrics", metrics,
+                "date", latest,
                 "latestDate", latest,
                 "hasData", latest != null && !latest.isBlank()
         );
