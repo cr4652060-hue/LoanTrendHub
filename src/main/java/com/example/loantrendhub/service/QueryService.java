@@ -148,30 +148,64 @@ public class QueryService {
                 "dateRange", dateRange
         );
     }
-    public String latestHeatmapDate(String scope, List<String> metrics) {
+    public String latestHeatmapDate(String scope, List<String> metrics, String endDate) {
         String resolvedScope = resolveScope(scope);
+
         List<String> selectedMetrics = (metrics == null ? List.<String>of() : metrics).stream()
                 .map(v -> v == null ? "" : v.trim())
                 .filter(v -> !v.isBlank())
                 .distinct()
                 .toList();
-        if (selectedMetrics.isEmpty()) {
-            String max = dateRangeByScope(resolvedScope).getOrDefault("max", "").toString();
-            return max.isBlank() ? null : max;
+
+        String upperBound = (endDate == null || endDate.isBlank())
+                ? String.valueOf(dateRangeByScope(resolvedScope).getOrDefault("max", ""))
+                : endDate.trim();
+
+        if (upperBound.isBlank()) {
+            return null;
         }
+
+        if (selectedMetrics.isEmpty()) {
+            return upperBound;
+        }
+
         List<String> branches = branches(resolvedScope);
         if (branches.isEmpty()) {
             return null;
         }
+
         Map<String, MetricDef> defs = metricService.metricMap();
-        List<String> dates = factRepo.findDatesDesc(resolvedScope);
+
+        List<String> dates = factRepo.findDatesDesc(resolvedScope).stream()
+                .filter(d -> d != null && !d.isBlank() && d.compareTo(upperBound) <= 0)
+                .toList();
+
         for (String d : dates) {
             Map<String, Double> matrixValues = buildHeatmapMatrixValues(resolvedScope, d, branches, selectedMetrics, defs);
-            boolean anyData = matrixValues.values().stream().anyMatch(v -> v != null && Double.isFinite(v));
-            if (anyData) {
+
+            boolean allMetricsReady = true;
+            for (String metric : selectedMetrics) {
+                boolean metricReady = branches.stream().anyMatch(branch -> {
+                    Double v = matrixValues.get(branch + "\u0001" + metric);
+                    return v != null && Double.isFinite(v);
+                });
+
+                if (log.isDebugEnabled()) {
+                    log.debug("latestHeatmapDate scope={} end={} date={} metric={} ready={}",
+                            resolvedScope, upperBound, d, metric, metricReady);
+                }
+
+                if (!metricReady) {
+                    allMetricsReady = false;
+                    break;
+                }
+            }
+
+            if (allMetricsReady) {
                 return d;
             }
         }
+
         return null;
     }
 
@@ -213,43 +247,67 @@ public class QueryService {
                                            Double minVal,
                                            Double maxVal,
                                            boolean levelMetric) {
-        if (rawValue == null || minVal == null || maxVal == null || !Double.isFinite(rawValue) || !Double.isFinite(minVal) || !Double.isFinite(maxVal)) {
+        if (rawValue == null || minVal == null || maxVal == null
+                || !Double.isFinite(rawValue)
+                || !Double.isFinite(minVal)
+                || !Double.isFinite(maxVal)) {
             return null;
         }
+
+        // 常数列：没有差异，统一中性色
+        if (Double.compare(minVal, maxVal) == 0) {
+            return 0d;
+        }
+
+        // 0 必须永远是中性色，避免 BOY_CNT=0 仍然发红/发蓝
+        if (Math.abs(rawValue) < EPSILON) {
+            return 0d;
+        }
+
         if (levelMetric) {
-            if (Double.compare(minVal, maxVal) == 0) {
-                return 0d;
-            }
+            // 存量类：按列 min-max 归一到 [-1,1]
             double norm01 = (rawValue - minVal) / (maxVal - minVal);
             double scaled = (norm01 * 2.0) - 1.0;
             return Math.max(-1d, Math.min(1d, scaled));
         }
 
+        // DELTA / RATE：0 永远居中
         double scaled;
+
+        // 跨零列：保留正负方向，线性归一
         if (minVal < 0d && maxVal > 0d) {
             double absMax = Math.max(Math.abs(minVal), Math.abs(maxVal));
             if (absMax < EPSILON) {
                 return 0d;
             }
             scaled = rawValue / absMax;
-        } else if (minVal >= 0d && maxVal > 0d) {
-            if (Double.compare(minVal, maxVal) == 0) {
-                scaled = 0.6d;
-            } else {
-                double norm01 = (rawValue - minVal) / (maxVal - minVal);
-                scaled = 0.2d + norm01 * 0.8d;
-            }
-        } else if (minVal < 0d && maxVal <= 0d) {
-            if (Double.compare(minVal, maxVal) == 0) {
-                scaled = -0.6d;
-            } else {
-                double norm01 = (rawValue - minVal) / (maxVal - minVal);
-                scaled = -1d + norm01 * 0.8d;
-            }
-        } else {
-            scaled = 0d;
+            return Math.max(-1d, Math.min(1d, scaled));
         }
-        return Math.max(-1d, Math.min(1d, scaled));
+
+        // 全正列：0 -> 0，max -> 1；用 gamma>1 拉开小差异，避免整片红
+        if (minVal >= 0d && maxVal > 0d) {
+            double norm = rawValue / maxVal;
+            norm = Math.max(0d, Math.min(1d, norm));
+
+            // gamma 越大，小值越靠近白色；1.8 比 0.65 更适合你现在这种“全红一片”的问题
+            double gamma = 1.8d;
+            scaled = Math.pow(norm, gamma);
+
+            return Math.max(-1d, Math.min(1d, scaled));
+        }
+
+        // 全负列：0 -> 0，最负 -> -1；同样拉开层次
+        if (minVal < 0d && maxVal <= 0d) {
+            double norm = Math.abs(rawValue) / Math.abs(minVal);
+            norm = Math.max(0d, Math.min(1d, norm));
+
+            double gamma = 1.8d;
+            scaled = -Math.pow(norm, gamma);
+
+            return Math.max(-1d, Math.min(1d, scaled));
+        }
+
+        return 0d;
     }
     public HeatmapResponse heatmap(String scope, String date, List<String> metrics) {
         String resolvedScope = resolveScope(scope);
@@ -276,11 +334,13 @@ public class QueryService {
                     new HeatmapResponse.Meta(date, resolvedScope, "", 0, true)
             );
         }
-        String effectiveDate = (date == null || date.isBlank()) ? latestHeatmapDate(resolvedScope, selectedMetrics) : date;
+        String effectiveDate = (date == null || date.isBlank())
+                ? latestHeatmapDate(resolvedScope, selectedMetrics, null)
+                : date;
         Map<String, Double> matrixValues = buildHeatmapMatrixValues(resolvedScope, effectiveDate, branches, selectedMetrics, defs);
         boolean hasAnyData = matrixValues.values().stream().anyMatch(v -> v != null && Double.isFinite(v));
         if (!hasAnyData) {
-            String latest = latestHeatmapDate(resolvedScope, selectedMetrics);
+            String latest = latestHeatmapDate(resolvedScope, selectedMetrics, effectiveDate);
             if (latest != null && !latest.isBlank() && !latest.equals(effectiveDate)) {
                 effectiveDate = latest;
                 matrixValues = buildHeatmapMatrixValues(resolvedScope, effectiveDate, branches, selectedMetrics, defs);

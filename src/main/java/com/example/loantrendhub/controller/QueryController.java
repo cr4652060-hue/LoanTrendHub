@@ -42,12 +42,14 @@ public class QueryController {
     @GetMapping("/heatmap/latestDate")
     public Map<String, Object> heatmapLatestDate(
             @RequestParam(name = "scope") String scope,
-            @RequestParam(name = "metrics") String metrics
+            @RequestParam(name = "metrics") String metrics,
+            @RequestParam(name = "end", required = false) String end
     ) {
-        String latest = queryService.latestHeatmapDate(scope, splitCsv(metrics));
+        String latest = queryService.latestHeatmapDate(scope, splitCsv(metrics), end);
         return Map.of(
                 "scope", scope,
                 "metrics", metrics,
+                "end", end == null ? "" : end,
                 "date", latest,
                 "latestDate", latest,
                 "hasData", latest != null && !latest.isBlank()

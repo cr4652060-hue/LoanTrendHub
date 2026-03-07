@@ -354,32 +354,79 @@ function setMultiSelected(sel, values){
         const url = scope ? `/api/dateRange?scope=${encodeURIComponent(scope)}` : '/api/dateRange';
         return await jget(url);
     }
+    function getScopeStorageKey(scope, field){
+        return `loantrendhub:${scope || ''}:${field}`;
+    }
 
+    function saveScopeDateState(scope){
+        if(!scope) return;
+        sessionStorage.setItem(getScopeStorageKey(scope, 'start'), $('start')?.value || '');
+        sessionStorage.setItem(getScopeStorageKey(scope, 'end'), $('end')?.value || '');
+        sessionStorage.setItem(getScopeStorageKey(scope, 'heatDate'), $('heatDate')?.value || '');
+    }
+
+    function restoreScopeDateState(scope, dr){
+        if(!scope) return false;
+
+        const savedStart = sessionStorage.getItem(getScopeStorageKey(scope, 'start')) || '';
+        const savedEnd = sessionStorage.getItem(getScopeStorageKey(scope, 'end')) || '';
+        const savedHeatDate = sessionStorage.getItem(getScopeStorageKey(scope, 'heatDate')) || '';
+
+        const inRange = (d) => {
+            if(!d || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+            if(dr?.min && d < dr.min) return false;
+            if(dr?.max && d > dr.max) return false;
+            return true;
+        };
+
+        let restored = false;
+
+        if(inRange(savedStart)){
+            $('start').value = savedStart;
+            restored = true;
+        }
+        if(inRange(savedEnd)){
+            $('end').value = savedEnd;
+            restored = true;
+        }
+        if(inRange(savedHeatDate)){
+            $('heatDate').value = savedHeatDate;
+            restored = true;
+        }
+
+        return restored;
+    }
     async function fetchLatestHeatDate(scope, metricsCsv){
         if(!metricsCsv) return '';
-        const url = `/api/heatmap/latestDate?scope=${encodeURIComponent(scope || '')}&metrics=${encodeURIComponent(metricsCsv)}`;
+        const end = ($('end')?.value || '').trim();
+        const url = `/api/heatmap/latestDate?scope=${encodeURIComponent(scope || '')}&metrics=${encodeURIComponent(metricsCsv)}&end=${encodeURIComponent(end)}`;
         const resp = await jget(url);
         return resp?.hasData ? (resp.date || resp.latestDate || '') : '';
     }
 
-    async function syncHeatDate(scope){
+
+        async function syncHeatDate(scope){
         let metrics = ($('heatMetrics').value || '').trim();
         const selVals = getMultiSelected($('heatMetricsSel'));
         if(selVals.length) metrics = selVals.join(',');
         $('heatMetrics').value = metrics;
+
         if(!metrics){
-            $('heatDate').value = '';
-            return '';
-        }
+        $('heatDate').value = '';
+        return '';
+    }
+
         const latest = await fetchLatestHeatDate(scope, metrics);
-        if(latest){
-            $('heatDate').value = latest;
-            return latest;
-        }
+        if(latest && /^\d{4}-\d{2}-\d{2}$/.test(latest)){
+        $('heatDate').value = latest;
+        return latest;
+    }
+
         $('heatDate').value = '';
         log('[WARN] 当前口径与所选指标暂无可用热力图日期');
         return '';
     }
+
 
     function pickGrowthDefaults(){
         const currentDelta = ($('deltaSel')?.value || $('deltaMetric')?.value || '').trim();
@@ -448,86 +495,137 @@ function setMultiSelected(sel, values){
         }, true);
     }
 
-    function renderHeatmap(resp){
+
+        function renderHeatmap(resp){
         if(!$('heatChart')){
-            log('[ERR] 热力图失败: 图表容器不存在');
-            return;
-        }
+        log('[ERR] 热力图失败: 图表容器不存在');
+        return;
+    }
         if(!Array.isArray(resp?.metrics) || !Array.isArray(resp?.branches) || !Array.isArray(resp?.data)){
-            log('[ERR] 热力图失败: 返回字段缺失（metrics/branches/data）');
-            return;
-        }
-        const x = resp.metrics;
-        const y = resp.branches;
-        const data = (resp.data || []).filter(row => Array.isArray(row) && row.length === 5);
+        log('[ERR] 热力图失败: 返回字段缺失（metrics/branches/data）');
+        return;
+    }
+
+        const x = resp.metrics || [];
+        const y = resp.branches || [];
+        const rawData = (resp.data || []).filter(row => Array.isArray(row) && row.length === 5);
         const title = resp?.title || `热力图：${getScopeName(resp?.scope || $('scopeSel')?.value || '')}`;
         const unit = resp?.unit || '';
 
+        const validColorRows = rawData.filter(row =>
+        row[4] === true &&
+        row[2] !== null &&
+        row[2] !== undefined &&
+        Number.isFinite(Number(row[2]))
+        );
+
+        if(validColorRows.length === 0){
+        heatChart.clear();
+        log('[WARN] 当前日期/口径/指标下无热力图数据');
+        return;
+    }
+
+        // 转成对象结构，显式告诉 ECharts 第 3 维才是颜色值
+        const data = rawData.map(row => ({
+        value: [row[0], row[1], row[2], row[3], row[4]]
+    }));
+
+        const colorValues = validColorRows.map(row => Number(row[2]));
+        let observedMin = Math.min(...colorValues);
+        let observedMax = Math.max(...colorValues);
+
+        let visualMin;
+        let visualMax;
+        let colors;
+
+        if (observedMin < 0 && observedMax > 0) {
+        const absMax = Math.max(Math.abs(observedMin), Math.abs(observedMax));
+        visualMin = -absMax;
+        visualMax = absMax;
+        colors = ['#1d4ed8', '#93c5fd', '#f8fafc', '#fca5a5', '#b91c1c'];
+    } else if (observedMin >= 0) {
+        visualMin = observedMin;
+        visualMax = observedMax;
+        if (visualMin === visualMax) {
+        visualMin = 0;
+        visualMax = observedMax > 0 ? observedMax : 1;
+    }
+        colors = ['#f8fafc', '#fde2e2', '#fca5a5', '#ef4444', '#b91c1c'];
+    } else {
+        visualMin = observedMin;
+        visualMax = observedMax;
+        if (visualMin === visualMax) {
+        visualMin = observedMin < 0 ? observedMin : -1;
+        visualMax = 0;
+    }
+        colors = ['#1e3a8a', '#3b82f6', '#93c5fd', '#dbeafe', '#f8fafc'];
+    }
 
         heatChart.setOption({
-            animation: false,
-            title: { text: title },
-            tooltip: {
-                position: 'top',
-                formatter: (p) => {
-                    const row = Array.isArray(p?.data) ? p.data : [];
-                    const metric = x[row[0]] || '';
-                    const rawVal = row[3];
-                    const hasData = row[4] === true;
-                    const valText = hasData ? formatDisplayNumber(rawVal, metric) : '无数据';
-                    const suffix = (valText === '无数据' || !unit || String(valText).includes('%')) ? '' : (' ' + unit);
-                    return `${y[row[1]] || ''}<br/>${metric}：${valText}${suffix}`;
-                }
-            },
-            grid: { left: 130, right: 42, top: 56, bottom: 100 },
-            xAxis: {
-                type: 'category',
-                data: x,
-                splitArea: { show: true },
-                axisLabel: { rotate: 30 }
-            },
-            yAxis: {
-                type: 'category',
-                data: y,
-                splitArea: { show: true }
-            },
-            visualMap: {
-                min: -1,
-                max: 1,
-                calculable: true,
-                orient: 'horizontal',
-                left: 'center',
-                bottom: 50,
-                inRange: { color: ['#1d4ed8', '#93c5fd', '#f8fafc', '#fca5a5', '#b91c1c'] },
-                outOfRange: { color: ['#f3f4f6'] }
-            },
-            dataZoom: [
-                { type: 'inside', yAxisIndex: 0 },
-                { type: 'inside', xAxisIndex: 0 },
-                { type: 'slider', yAxisIndex: 0, right: 10 },
-                { type: 'slider', xAxisIndex: 0, height: 16, bottom: 20 }
-            ],
-            series: [{
-                name: 'value',
-                type: 'heatmap',
-                data,
-                label: {
-                    show: false,
-                    formatter: (p) => {
-                        const row = Array.isArray(p?.data) ? p.data : [];
-                        const metric = x[row[0]] || '';
-                        const rawVal = row[3];
-                        return rawVal === null || rawVal === undefined ? '-' : formatDisplayNumber(rawVal, metric);
-                    }
-                },
-                itemStyle: {
-                    borderColor: '#fff',
-                    borderWidth: 1
-                },
-                emphasis: { itemStyle: { shadowBlur: 8, shadowColor: 'rgba(0,0,0,0.25)' } }
-            }]
-        }, true);
+        animation: false,
+        title: { text: title },
+        tooltip: {
+        position: 'top',
+        formatter: (p) => {
+        const row = Array.isArray(p?.value) ? p.value : [];
+        const metric = x[row[0]] || '';
+        const rawVal = row[3];
+        const hasData = row[4] === true;
+        const valText = hasData ? formatDisplayNumber(rawVal, metric) : '无数据';
+        const suffix = (valText === '无数据' || !unit || String(valText).includes('%')) ? '' : (' ' + unit);
+        return `${y[row[1]] || ''}<br/>${metric}：${valText}${suffix}`;
     }
+    },
+        grid: { left: 130, right: 42, top: 56, bottom: 100 },
+        xAxis: {
+        type: 'category',
+        data: x,
+        splitArea: { show: true },
+        axisLabel: { rotate: 30 }
+    },
+        yAxis: {
+        type: 'category',
+        data: y,
+        splitArea: { show: true }
+    },
+        visualMap: {
+        type: 'continuous',
+        dimension: 2,
+        min: visualMin,
+        max: visualMax,
+        calculable: true,
+        orient: 'horizontal',
+        left: 'center',
+        bottom: 50,
+        inRange: { color: colors },
+        outOfRange: { color: ['#f3f4f6'] }
+    },
+        dataZoom: [
+    { type: 'inside', yAxisIndex: 0 },
+    { type: 'inside', xAxisIndex: 0 },
+    { type: 'slider', yAxisIndex: 0, right: 10 },
+    { type: 'slider', xAxisIndex: 0, height: 16, bottom: 20 }
+        ],
+        series: [{
+        name: 'value',
+        type: 'heatmap',
+        encode: { x: 0, y: 1, value: 2, tooltip: [3] },
+        data,
+        label: { show: false },
+        itemStyle: {
+        borderColor: '#fff',
+        borderWidth: 1
+    },
+        emphasis: {
+        itemStyle: {
+        shadowBlur: 8,
+        shadowColor: 'rgba(0,0,0,0.25)'
+    }
+    }
+    }]
+    }, true);
+    }
+
 
     function normalizeBranchName(name){
         return String(name || '')
@@ -557,106 +655,130 @@ function setMultiSelected(sel, values){
     }
 
 
-    async function refreshMeta(){
+        async function refreshMeta(){
         $('badgeStatus').textContent = '加载元数据…';
         try{
-            const meta = await jget('/api/meta');
+        const meta = await jget('/api/meta');
 
+        const scopesRaw = Array.isArray(meta?.scopes) ? meta.scopes : [];
+        const scopeStatsRaw = Array.isArray(meta?.scopeStats) ? meta.scopeStats : [];
+        const metricsRaw = Array.isArray(meta?.metrics) ? meta.metrics : [];
+        const branchesRaw = Array.isArray(meta?.branches) ? meta.branches : [];
 
-            const scopesRaw = Array.isArray(meta?.scopes) ? meta.scopes : [];
-            const scopeStatsRaw = Array.isArray(meta?.scopeStats) ? meta.scopeStats : [];
-            const metricsRaw = Array.isArray(meta?.metrics) ? meta.metrics : [];
-            const branchesRaw = Array.isArray(meta?.branches) ? meta.branches : [];
-            if(!Array.isArray(meta?.scopes) || !Array.isArray(meta?.metrics) || !Array.isArray(meta?.branches)){
-                log('[WARN] 元数据字段缺失或格式异常，已使用空数组兜底。');
-            }
-
-            let dr = meta?.dateRange || {};
-            try{
-                const drResp = await fetchDateRangeByScope(meta?.suggestedScope || '');
-                if(drResp && typeof drResp === 'object') dr = drResp;
-            }catch(e){
-                log('[WARN] 获取日期范围失败（/api/dateRange）：' + e.message);
-            }
-            if(dr && dr.hasData && dr.min && dr.max){
-                setBadge('badgeRange', `${dr.min} ~ ${dr.max}`);
-                $('start').value = dr.min;
-                $('end').value = dr.max;
-
-            } else {
-                setBadge('badgeRange', '-');
-                log('[INFO] 当前暂无数据，请先批量导入 Excel');
-            }
-
-            const scopes = scopesRaw.map(s => {
-                const hit = scopeStatsRaw.find(row => String(row?.key || '') === String(s));
-                return {
-                    key: s,
-                    name: hit?.name || s
-                };
-            });
-            SCOPE_OPTIONS = (scopes || [])
-                .map(s => ({ key: (s?.key || ''), name: (s?.name || s?.key || '') }))
-                .filter(x => x.key);
-            fillSelect($('scopeSel'), SCOPE_OPTIONS, x=>x.key, x=>x.name);
-
-            const metrics = metricsRaw;
-            METRIC_OPTIONS = metrics || [];
-            const metricLabel = (m) => {
-                const code = (m.metric ?? m.key);
-                const kind = String(m.kind || '').toUpperCase();
-                const kindTip = kind === 'DELTA' ? '变化量' : (kind === 'LEVEL' ? '存量' : (kind === 'RATE' ? '比例' : ''));
-                return `${(m.name ?? code)}（${code}${kindTip ? ' / ' + kindTip : ''}）`;
-            };
-            fillSelect($('metricSel'), METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
-            // also fill heatmap & growth metric selectors
-            fillSelect($('heatMetricsSel'), METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
-            const deltaMetrics = METRIC_OPTIONS.filter(m => ['DELTA','LEVEL'].includes(String(m.kind || '').toUpperCase()));
-            const baseMetrics = METRIC_OPTIONS.filter(m => String(m.kind || '').toUpperCase() === 'LEVEL');
-            fillSelect($('deltaSel'), deltaMetrics.length ? deltaMetrics : METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
-            fillSelect($('baseSel'), baseMetrics.length ? baseMetrics : METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
-
-            let defaultScope = (meta?.suggestedScope || SCOPE_OPTIONS?.[0]?.key || '');
-
-            const defaultMetric = METRIC_OPTIONS?.[0]?.metric ?? METRIC_OPTIONS?.[0]?.key ?? '';
-            $('scopeSel').value = defaultScope;
-            $('metricSel').value = defaultMetric;
-            setBadge('badgeScope', getScopeName(defaultScope) || '-');
-
-            ALL_BRANCHES = normalizeBranchOptions(branchesRaw);
-            renderBranchList();
-            setBadge('badgeBranchCnt', ALL_BRANCHES.length);
-
-            $('badgeStatus').textContent = '就绪';
-            // defaults (avoid empty UI)
-            if($('heatMetricsSel') && $('heatMetricsSel').options.length>0 && getMultiSelected($('heatMetricsSel')).length===0){
-                const common = Array.from($('heatMetricsSel').options).slice(0,3).map(o=>o.value);
-                setMultiSelected($('heatMetricsSel'), common);
-            }
-            await syncHeatDate(defaultScope);
-            if($('deltaSel') && $('deltaSel').options.length>0 && !$('deltaSel').value){
-                $('deltaSel').value = $('deltaSel').options[0].value;
-            }
-            if($('baseSel') && $('baseSel').options.length>0 && !$('baseSel').value){
-                $('baseSel').value = $('baseSel').options[0].value;
-                $('deltaMetric').value = $('deltaSel').value;
-            }
-            pickGrowthDefaults();
-            log(`[OK] 元数据加载完成：scopes=${(scopes||[]).length} metrics=${(metrics||[]).length} branches=${ALL_BRANCHES.length}`);
-        }catch(e){
-            if(e?.code === 'DB_NOT_READY'){
-                $('badgeStatus').textContent = '数据库未就绪';
-                setBadge('badgeRange', '-');
-                setBadge('badgeScope', '-');
-                setBadge('badgeBranchCnt', '-');
-                log('[ERR] 数据库初始化未完成，请先执行 schema-mysql.sql');
-                return;
-            }
-            $('badgeStatus').textContent = '初始化失败';
-            log(`[ERR] 初始化失败：${e.message}`);
-            console.error(e);
-        }
+        if(!Array.isArray(meta?.scopes) || !Array.isArray(meta?.metrics) || !Array.isArray(meta?.branches)){
+        log('[WARN] 元数据字段缺失或格式异常，已使用空数组兜底。');
     }
+
+        const scopes = scopesRaw.map(s => {
+        const hit = scopeStatsRaw.find(row => String(row?.key || '') === String(s));
+        return {
+        key: s,
+        name: hit?.name || s
+    };
+    });
+
+        SCOPE_OPTIONS = (scopes || [])
+        .map(s => ({ key: (s?.key || ''), name: (s?.name || s?.key || '') }))
+        .filter(x => x.key);
+
+        fillSelect($('scopeSel'), SCOPE_OPTIONS, x=>x.key, x=>x.name);
+
+        const metrics = metricsRaw;
+        METRIC_OPTIONS = metrics || [];
+
+        const metricLabel = (m) => {
+        const code = (m.metric ?? m.key);
+        const kind = String(m.kind || '').toUpperCase();
+        const kindTip = kind === 'DELTA' ? '变化量' : (kind === 'LEVEL' ? '存量' : (kind === 'RATE' ? '比例' : ''));
+        return `${(m.name ?? code)}（${code}${kindTip ? ' / ' + kindTip : ''}）`;
+    };
+
+        fillSelect($('metricSel'), METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
+        fillSelect($('heatMetricsSel'), METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
+
+        const deltaMetrics = METRIC_OPTIONS.filter(m => ['DELTA','LEVEL'].includes(String(m.kind || '').toUpperCase()));
+        const baseMetrics = METRIC_OPTIONS.filter(m => String(m.kind || '').toUpperCase() === 'LEVEL');
+        fillSelect($('deltaSel'), deltaMetrics.length ? deltaMetrics : METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
+        fillSelect($('baseSel'), baseMetrics.length ? baseMetrics : METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
+
+        let defaultScope = (meta?.suggestedScope || SCOPE_OPTIONS?.[0]?.key || '');
+        const defaultMetric = METRIC_OPTIONS?.[0]?.metric ?? METRIC_OPTIONS?.[0]?.key ?? '';
+
+        $('scopeSel').value = defaultScope;
+        $('metricSel').value = defaultMetric;
+        setBadge('badgeScope', getScopeName(defaultScope) || '-');
+
+        // 这次不再先全局写死日期，而是按当前 scope 单独取日期范围
+        let dr = {};
+        try{
+        const drResp = await fetchDateRangeByScope(defaultScope);
+        if(drResp && typeof drResp === 'object') dr = drResp;
+    }catch(e){
+        log('[WARN] 获取日期范围失败（/api/dateRange）：' + e.message);
+    }
+
+        if(dr && dr.hasData && dr.min && dr.max){
+        setBadge('badgeRange', `${dr.min} ~ ${dr.max}`);
+
+        // 优先恢复该 scope 上一次用户选过的日期；没有才回落到 min/max
+        const restored = restoreScopeDateState(defaultScope, dr);
+        if(!restored){
+        $('start').value = dr.min;
+        $('end').value = dr.max;
+        $('heatDate').value = '';
+    }
+    } else {
+        setBadge('badgeRange', '-');
+        $('start').value = '';
+        $('end').value = '';
+        $('heatDate').value = '';
+        log('[INFO] 当前暂无数据，请先批量导入 Excel');
+    }
+
+        ALL_BRANCHES = normalizeBranchOptions(branchesRaw);
+        renderBranchList();
+        setBadge('badgeBranchCnt', ALL_BRANCHES.length);
+
+        $('badgeStatus').textContent = '就绪';
+
+        if($('heatMetricsSel') && $('heatMetricsSel').options.length > 0 && getMultiSelected($('heatMetricsSel')).length === 0){
+        const common = Array.from($('heatMetricsSel').options).slice(0,3).map(o=>o.value);
+        setMultiSelected($('heatMetricsSel'), common);
+        $('heatMetrics').value = common.join(',');
+    } else {
+        $('heatMetrics').value = getMultiSelected($('heatMetricsSel')).join(',');
+    }
+
+        // 只在 heatDate 为空时，自动同步最新热力图日期
+        if(!$('heatDate').value){
+        await syncHeatDate(defaultScope);
+    }
+
+        if($('deltaSel') && $('deltaSel').options.length > 0 && !$('deltaSel').value){
+        $('deltaSel').value = $('deltaSel').options[0].value;
+    }
+        if($('baseSel') && $('baseSel').options.length > 0 && !$('baseSel').value){
+        $('baseSel').value = $('baseSel').options[0].value;
+        $('deltaMetric').value = $('deltaSel').value;
+    }
+
+        pickGrowthDefaults();
+        log(`[OK] 元数据加载完成：scopes=${(scopes||[]).length} metrics=${(metrics||[]).length} branches=${ALL_BRANCHES.length}`);
+    }catch(e){
+        if(e?.code === 'DB_NOT_READY'){
+        $('badgeStatus').textContent = '数据库未就绪';
+        setBadge('badgeRange', '-');
+        setBadge('badgeScope', '-');
+        setBadge('badgeBranchCnt', '-');
+        log('[ERR] 数据库初始化未完成，请先执行 schema-mysql.sql');
+        return;
+    }
+        $('badgeStatus').textContent = '初始化失败';
+        log(`[ERR] 初始化失败：${e.message}`);
+        console.error(e);
+    }
+    }
+
 
     function renderBranchList(){
         const kw = $('branchSearch').value || '';
@@ -705,83 +827,106 @@ function setMultiSelected(sel, values){
         }
     }
 
-    async function doHeat(){
+
+        async function doHeat(){
         try{
-            const scope = $('scopeSel').value || '';
-            let metrics = ($('heatMetrics').value || '').trim();
-            const selVals = getMultiSelected($('heatMetricsSel'));
-            if(selVals.length) metrics = selVals.join(',');
-            $('heatMetrics').value = metrics;
-            if(!metrics){ log('[WARN] 热力图指标不能为空'); return; }
-            const latest = await fetchLatestHeatDate(scope, metrics);
-            if(!latest || !/^\d{4}-\d{2}-\d{2}$/.test(latest)){
-                $('heatDate').value = '';
-                log('[WARN] 当前口径与所选指标暂无可用热力图日期');
-                heatChart.clear();
-                return;
-            }
-            $('heatDate').value = latest;
-            const date = latest;
-            log(`[DEBUG] doHeat scope=${scope}, metrics=${metrics}, latest=${latest}, finalDate=${date}`);
-            const fetchHeatResp = async (targetDate) => await jget(`/api/heatmap?scope=${encodeURIComponent(scope)}&date=${encodeURIComponent(targetDate)}&metrics=${encodeURIComponent(metrics)}`);
-            let resp = await fetchHeatResp(date);
-            if(resp && typeof resp === 'object' && resp.code && resp.message){
-                log('[ERR] 热力图失败: ' + resp.message);
-                return;
-            }
-            if(!Array.isArray(resp?.data) || !Array.isArray(resp?.metrics) || !Array.isArray(resp?.branches)){
-                log('[ERR] 热力图失败: 返回字段缺失（metrics/branches/data）');
-                return;
-            }
-            const invalidRow = (resp.data || []).find(row => !Array.isArray(row) || row.length !== 5);
-            if(invalidRow){
-                log('[ERR] 热力图失败: data 单元结构必须为 [xIndex,yIndex,colorValue,rawValue,hasData]');
-                return;
-            }
-            const metricStats = new Map();
-            (resp.data || []).forEach(row => {
-                if(!Array.isArray(row)) return;
-                const metric = resp.metrics?.[row[0]];
-                if(!metric) return;
-                const hasData = row[4] === true;
-                const stat = metricStats.get(metric) || { hasData: false };
-                if(hasData) stat.hasData = true;
-                metricStats.set(metric, stat);
-            });
-            updateHeatMetricOptionsAvailability(metricStats);
-            if(resp?.meta?.allNull === true){
-                heatChart.clear();
-                log('[WARN] 当前日期/口径/指标下无热力图数据');
-                return;
-            }
-            if((resp.data || []).length === 0){
-                heatChart.clear();
-                log('[WARN] 热力图无数据');
-                return;
-            }
-            const hasAnyData = (resp.data || []).some(row => Array.isArray(row) && row[4] === true);
-            if(!hasAnyData){
-                heatChart.clear();
-                log('[WARN] 当前日期/口径/指标下无热力图数据');
-                return;
-            }
-            const signedColorValues = (resp.data || [])
-                .filter(row => Array.isArray(row) && row[4] === true)
-                .map(row => Number(row[2]))
-                .filter(v => Number.isFinite(v));
-            if(signedColorValues.length > 0){
-                const maxAbs = Math.max(...signedColorValues.map(v => Math.abs(v)));
-                if(maxAbs < 0.05){
-                    log('[INFO] 当前所选指标波动极小，色阶区分不明显');
-                }
-            }
-            renderHeatmap(resp);
-            log('[OK] 热力图刷新完成');
-        }catch(e){
-            log('[ERR] 热力图失败: ' + e.message);
-            console.error(e);
-        }
+        const scope = $('scopeSel').value || '';
+
+        let metrics = ($('heatMetrics').value || '').trim();
+        const selVals = getMultiSelected($('heatMetricsSel'));
+        if(selVals.length) metrics = selVals.join(',');
+        $('heatMetrics').value = metrics;
+
+        if(!metrics){
+        log('[WARN] 热力图指标不能为空');
+        heatChart.clear();
+        return;
     }
+
+        const latest = await fetchLatestHeatDate(scope, metrics);
+
+        // 先尊重用户当前输入的 heatDate，不要一上来就覆盖
+        let date = ($('heatDate').value || '').trim();
+
+        // 当前 heatDate 非法，才自动回填 latest
+        if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){
+        if(latest && /^\d{4}-\d{2}-\d{2}$/.test(latest)){
+        date = latest;
+        $('heatDate').value = latest;
+    }else{
+        $('heatDate').value = '';
+        heatChart.clear();
+        log('[WARN] 当前口径与所选指标暂无可用热力图日期');
+        return;
+    }
+    }
+
+        // 如果用户填的日期晚于当前 end，则截断到 end
+        const end = ($('end')?.value || '').trim();
+        if(/^\d{4}-\d{2}-\d{2}$/.test(end) && date > end){
+        date = end;
+        $('heatDate').value = end;
+    }
+
+        log(`[DEBUG] doHeat scope=${scope}, metrics=${metrics}, latest=${latest}, finalDate=${date}`);
+
+        const resp = await jget(
+        `/api/heatmap?scope=${encodeURIComponent(scope)}&date=${encodeURIComponent(date)}&metrics=${encodeURIComponent(metrics)}`
+        );
+
+        if(resp && typeof resp === 'object' && resp.code && resp.message){
+        heatChart.clear();
+        log('[ERR] 热力图失败: ' + resp.message);
+        return;
+    }
+
+        if(!Array.isArray(resp?.data) || !Array.isArray(resp?.metrics) || !Array.isArray(resp?.branches)){
+        heatChart.clear();
+        log('[ERR] 热力图失败: 返回字段缺失（metrics/branches/data）');
+        return;
+    }
+
+        const invalidRow = (resp.data || []).find(row => !Array.isArray(row) || row.length !== 5);
+        if(invalidRow){
+        heatChart.clear();
+        log('[ERR] 热力图失败: data 单元结构必须为 [xIndex,yIndex,colorValue,rawValue,hasData]');
+        return;
+    }
+
+        const metricStats = new Map();
+        (resp.data || []).forEach(row => {
+        if(!Array.isArray(row)) return;
+        const metric = resp.metrics?.[row[0]];
+        if(!metric) return;
+        const hasData = row[4] === true;
+        const stat = metricStats.get(metric) || { hasData: false };
+        if(hasData) stat.hasData = true;
+        metricStats.set(metric, stat);
+    });
+        updateHeatMetricOptionsAvailability(metricStats);
+
+        if(resp?.meta?.allNull === true){
+        heatChart.clear();
+        log('[WARN] 当前日期/口径/指标下无热力图数据');
+        return;
+    }
+
+        const hasAnyData = (resp.data || []).some(row => Array.isArray(row) && row[4] === true);
+        if(!hasAnyData){
+        heatChart.clear();
+        log('[WARN] 当前日期/口径/指标下无热力图数据');
+        return;
+    }
+
+        renderHeatmap(resp);
+        log('[OK] 热力图刷新完成');
+    }catch(e){
+        heatChart.clear();
+        log('[ERR] 热力图失败: ' + e.message);
+        console.error(e);
+    }
+    }
+
 
     async function doTrendMulti(){
         try{
@@ -855,22 +1000,28 @@ function setMultiSelected(sel, values){
         $('btnGrowth').addEventListener('click', doGrowth);
 
         $('scopeSel').addEventListener('change', async ()=>{
-        const scope = $('scopeSel').value || '';
-        setBadge('badgeScope', getScopeName(scope) || '-');
-        try{
-            ALL_BRANCHES = normalizeBranchOptions(await jget('/api/branches?scope=' + encodeURIComponent(scope)));
-            if (ALL_BRANCHES.length === 0) {
-                const debug = await jget('/api/branches/debug?scope=' + encodeURIComponent(scope));
-                log('[WARN] 当前口径 branches=0，调试信息：' + JSON.stringify(debug));
+            const scope = $('scopeSel').value || '';
+            setBadge('badgeScope', getScopeName(scope) || '-');
+            try{
+                ALL_BRANCHES = normalizeBranchOptions(await jget('/api/branches?scope=' + encodeURIComponent(scope)));
+                if (ALL_BRANCHES.length === 0) {
+                    const debug = await jget('/api/branches/debug?scope=' + encodeURIComponent(scope));
+                    log('[WARN] 当前口径 branches=0，调试信息：' + JSON.stringify(debug));
+                }
+
+                const dr = await fetchDateRangeByScope(scope);
+                if(dr?.min) $('start').value = dr.min;
+                if(dr?.max) $('end').value = dr.max;
+
+                $('branchSearch').value = '';
+                renderBranchList();
+                await syncHeatDate(scope);
+                log(`[OK] 切换口径：${scope}，branches=${ALL_BRANCHES.length}`);
+                await doHeat();
+                saveScopeDateState(scope);
+            }catch(e){
+                log('[ERR] 获取网点失败：' + e.message);
             }
-            $('branchSearch').value='';
-            renderBranchList();
-            await syncHeatDate(scope);
-            log(`[OK] 切换口径：${scope}，branches=${ALL_BRANCHES.length}`);
-            await doHeat();
-        }catch(e){
-            log('[ERR] 获取网点失败：' + e.message);
-        }
         });
 
         $('branchSearch').addEventListener('input', renderBranchList);
@@ -884,6 +1035,9 @@ function setMultiSelected(sel, values){
         $('baseSel')?.addEventListener('change', ()=>{
             $('baseMetric').value = $('baseSel').value || '';
         });
+        $('start')?.addEventListener('change', ()=> saveScopeDateState($('scopeSel')?.value || ''));
+        $('end')?.addEventListener('change', ()=> saveScopeDateState($('scopeSel')?.value || ''));
+        $('heatDate')?.addEventListener('change', ()=> saveScopeDateState($('scopeSel')?.value || ''));
     }
 
     async function initPage(){
