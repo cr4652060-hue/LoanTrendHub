@@ -175,30 +175,57 @@ public class QueryService {
         for (int i = 0; i < branches.size(); i++) {
             branchIdx.put(branches.get(i), i);
         }
+        List<String> rawMetrics = new ArrayList<>();
+        List<String> derivedMetrics = new ArrayList<>();
+        for (String metric : selectedMetrics) {
+            MetricDef md = defs.get(metric);
+            if (md != null && ("DELTA".equalsIgnoreCase(md.kind()) || "RATE".equalsIgnoreCase(md.kind()))) {
+                derivedMetrics.add(metric);
+            } else {
+                rawMetrics.add(metric);
+            }
+        }
 
-        List<FactRepo.HeatmapCell> source = factRepo.findHeatmapMatrix(date, resolvedScope, selectedMetrics);
+        Map<String, Double> matrixValues = new HashMap<>();
+        if (!rawMetrics.isEmpty()) {
+            List<FactRepo.HeatmapCell> source = factRepo.findHeatmapMatrix(date, resolvedScope, rawMetrics);
+            for (FactRepo.HeatmapCell row : source) {
+                matrixValues.put(row.branch() + "\u0001" + row.metric(), row.val());
+            }
+        }
+        if (!derivedMetrics.isEmpty()) {
+            matrixValues.putAll(computeDerivedHeatmapValues(resolvedScope, date, branches, derivedMetrics, defs));
+        }
+
         List<List<Object>> data = new ArrayList<>();
         List<HeatmapResponse.Cell> cells = new ArrayList<>();
         Double min = null;
         Double max = null;
         int dataRowCount = 0;
 
-        for (FactRepo.HeatmapCell row : source) {
-            Integer xi = metricIdx.get(row.metric());
-            Integer yi = branchIdx.get(row.branch());
-            if (xi == null || yi == null) {
+        for (String branch : branches) {
+            Integer yi = branchIdx.get(branch);
+            if (yi == null) {
                 continue;
             }
-            boolean hasData = row.val() != null;
-            data.add(Arrays.asList(xi, yi, row.val(), hasData));
-            cells.add(new HeatmapResponse.Cell(row.branch(), row.metric(), row.val(), hasData));
-            if (!hasData) {
-                continue;
+            for (String metric : selectedMetrics) {
+                Integer xi = metricIdx.get(metric);
+                if (xi == null) {
+                    continue;
+                }
+                Double cellVal = matrixValues.get(branch + "\u0001" + metric);
+                boolean hasData = cellVal != null && Double.isFinite(cellVal);
+                Double safeVal = hasData ? cellVal : null;
+                data.add(Arrays.asList(xi, yi, safeVal, hasData));
+                cells.add(new HeatmapResponse.Cell(branch, metric, safeVal, hasData));
+                if (!hasData) {
+                    continue;
+                }
+                double v = safeVal;
+                dataRowCount++;
+                min = (min == null) ? v : Math.min(min, v);
+                max = (max == null) ? v : Math.max(max, v);
             }
-            double v = row.val();
-            dataRowCount++;
-            min = (min == null) ? v : Math.min(min, v);
-            max = (max == null) ? v : Math.max(max, v);
         }
 
         boolean allNull = dataRowCount == 0;
@@ -236,6 +263,43 @@ public class QueryService {
                         allNull
                 )
         );
+    }
+
+    private Map<String, Double> computeDerivedHeatmapValues(String scope,
+                                                            String date,
+                                                            List<String> branches,
+                                                            List<String> metrics,
+                                                            Map<String, MetricDef> defs) {
+        if (branches == null || branches.isEmpty() || metrics == null || metrics.isEmpty()) {
+            return Map.of();
+        }
+        List<String> dates = new ArrayList<>(new TreeSet<>(factRepo.findDates(scope, "0001-01-01", date)));
+        if (dates.isEmpty()) {
+            return Map.of();
+        }
+        String start = dates.get(0);
+        Map<String, Double> values = new HashMap<>();
+        for (String metric : metrics) {
+            MetricDef md = defs.get(metric);
+            if (md == null || md.baseMetric() == null || md.baseMetric().isBlank()) {
+                continue;
+            }
+            List<FactRow> rows;
+            if ("DELTA".equalsIgnoreCase(md.kind())) {
+                rows = buildDeltaRowsFromBase(scope, branches, dates, metric, md.baseMetric(), start, date);
+            } else if ("RATE".equalsIgnoreCase(md.kind())) {
+                rows = buildRateRowsFromBase(scope, branches, dates, metric, md.baseMetric(), start, date);
+            } else {
+                continue;
+            }
+            for (FactRow row : rows) {
+                if (!date.equals(row.bizDate()) || row.val() == null || !Double.isFinite(row.val())) {
+                    continue;
+                }
+                values.put(row.branch() + "\u0001" + metric, row.val());
+            }
+        }
+        return values;
     }
 
     /** 统一：同指标多网点，或同网点多指标 */
