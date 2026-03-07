@@ -8,6 +8,8 @@ import com.example.loantrendhub.repo.FactRepo;
 import com.example.loantrendhub.util.BranchNormalizeUtil;
 import com.example.loantrendhub.util.BranchNormalizer;
 import com.example.loantrendhub.util.DateUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -28,6 +30,7 @@ import java.util.stream.Collectors;
 public class QueryService {
 
     private static final double EPSILON = 1e-9;
+    private static final Logger log = LoggerFactory.getLogger(QueryService.class);
     private final FactRepo factRepo;
     private final MetricService metricService;
     private final int maxBranchSeries;
@@ -218,17 +221,15 @@ public class QueryService {
         }
         if (levelMetric) {
             double norm01 = (rawValue - minVal) / (maxVal - minVal);
-            return (norm01 * 2.0) - 1.0;
+            double scaled = (norm01 * 2.0) - 1.0;
+            return Math.max(-1d, Math.min(1d, scaled));
         }
-        if (minVal < 0 && maxVal > 0) {
-            double absMax = Math.max(Math.abs(minVal), Math.abs(maxVal));
-            if (absMax < EPSILON) {
-                return 0d;
-            }
-            return rawValue / absMax;
+        double absMax = Math.max(Math.abs(minVal), Math.abs(maxVal));
+        if (absMax < EPSILON) {
+            return 0d;
         }
-        double norm01 = (rawValue - minVal) / (maxVal - minVal);
-        return (norm01 * 2.0) - 1.0;
+        double scaled = rawValue / absMax;
+        return Math.max(-1d, Math.min(1d, scaled));
     }
     public HeatmapResponse heatmap(String scope, String date, List<String> metrics) {
         String resolvedScope = resolveScope(scope);
@@ -278,6 +279,7 @@ public class QueryService {
         List<List<Object>> data = new ArrayList<>();
         List<HeatmapResponse.Cell> cells = new ArrayList<>();
         int dataRowCount = 0;
+        int debugLogCount = 0;
         Map<String, Double> metricMin = new HashMap<>();
         Map<String, Double> metricMax = new HashMap<>();
         for (String metric : selectedMetrics) {
@@ -312,6 +314,10 @@ public class QueryService {
                         : null;
                 data.add(Arrays.asList(xi, yi, colorValue, safeRaw, hasData));
                 cells.add(new HeatmapResponse.Cell(branch, metric, safeRaw, hasData));
+                if (hasData && debugLogCount < 8 && log.isDebugEnabled()) {
+                    log.debug("heat cell metric={}, branch={}, raw={}, color={}", metric, branch, safeRaw, colorValue);
+                    debugLogCount++;
+                }
                 if (hasData) {
                     dataRowCount++;
                 }

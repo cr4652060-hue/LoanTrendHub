@@ -366,6 +366,7 @@ function setMultiSelected(sel, values){
         let metrics = ($('heatMetrics').value || '').trim();
         const selVals = getMultiSelected($('heatMetricsSel'));
         if(selVals.length) metrics = selVals.join(',');
+        $('heatMetrics').value = metrics;
         if(!metrics){
             $('heatDate').value = '';
             return '';
@@ -375,6 +376,7 @@ function setMultiSelected(sel, values){
             $('heatDate').value = latest;
             return latest;
         }
+        $('heatDate').value = '';
         log('[WARN] 当前口径与所选指标暂无可用热力图日期');
         return '';
     }
@@ -706,34 +708,34 @@ function setMultiSelected(sel, values){
     async function doHeat(){
         try{
             const scope = $('scopeSel').value || '';
-            let date = $('heatDate').value || '';
             let metrics = ($('heatMetrics').value || '').trim();
             const selVals = getMultiSelected($('heatMetricsSel'));
             if(selVals.length) metrics = selVals.join(',');
+            $('heatMetrics').value = metrics;
             if(!metrics){ log('[WARN] 热力图指标不能为空'); return; }
             const latest = await fetchLatestHeatDate(scope, metrics);
             if(!latest){
+                $('heatDate').value = '';
                 log('[WARN] 当前口径与所选指标暂无可用热力图日期');
                 heatChart.clear();
                 return;
             }
+            let date = $('heatDate').value || '';
             if(!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)){
                 date = latest;
                 $('heatDate').value = latest;
             }
-            const url = `/api/heatmap?scope=${encodeURIComponent(scope)}&date=${encodeURIComponent(date)}&metrics=${encodeURIComponent(metrics)}`;
-            let resp = await jget(url);
+            const fetchHeatResp = async (targetDate) => await jget(`/api/heatmap?scope=${encodeURIComponent(scope)}&date=${encodeURIComponent(targetDate)}&metrics=${encodeURIComponent(metrics)}`);
+            let resp = await fetchHeatResp(date);
             if(resp && typeof resp === 'object' && resp.code && resp.message){
                 log('[ERR] 热力图失败: ' + resp.message);
                 return;
             }
-            if((resp?.meta?.allNull === true || (resp?.data || []).length === 0) && date){
-                const fallbackDate = await fetchLatestHeatDate(scope, metrics);
-                if(fallbackDate && fallbackDate !== date){
-                    $('heatDate').value = fallbackDate;
-                    log(`[WARN] 日期 ${date} 暂无数据，已回退到 ${fallbackDate}`);
-                    resp = await jget(`/api/heatmap?scope=${encodeURIComponent(scope)}&date=${encodeURIComponent(fallbackDate)}&metrics=${encodeURIComponent(metrics)}`);
-                }
+            if((resp?.meta?.allNull === true || (resp?.data || []).length === 0) && date !== latest){
+                $('heatDate').value = latest;
+                log(`[WARN] 日期 ${date} 暂无数据，已回退到 ${latest}`);
+                date = latest;
+                resp = await fetchHeatResp(latest);
             }
             if(!Array.isArray(resp?.data) || !Array.isArray(resp?.metrics) || !Array.isArray(resp?.branches)){
                 log('[ERR] 热力图失败: 返回字段缺失（metrics/branches/data）');
