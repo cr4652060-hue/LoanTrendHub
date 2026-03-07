@@ -396,6 +396,72 @@ function setMultiSelected(sel, values){
 
         return restored;
     }
+
+    function getLastUploadMaxDate(){
+        return sessionStorage.getItem('loantrendhub:lastUploadMaxDate') || '';
+    }
+
+    function setLastUploadMaxDate(date){
+        if(date && /^\d{4}-\d{2}-\d{2}$/.test(date)){
+            sessionStorage.setItem('loantrendhub:lastUploadMaxDate', date);
+        }
+    }
+
+    function clearLastUploadMaxDate(){
+        sessionStorage.removeItem('loantrendhub:lastUploadMaxDate');
+    }
+
+    function isUploadDateSticky(){
+        return sessionStorage.getItem('loantrendhub:uploadDateSticky') === '1';
+    }
+
+    function setUploadDateSticky(flag){
+        if(flag){
+            sessionStorage.setItem('loantrendhub:uploadDateSticky', '1');
+        }else{
+            sessionStorage.removeItem('loantrendhub:uploadDateSticky');
+        }
+    }
+
+    function pickPreferredDateInRange(dr, preferredDate){
+        const d = String(preferredDate || '').trim();
+        if(!/^\d{4}-\d{2}-\d{2}$/.test(d)) return '';
+        if(dr?.min && d < dr.min) return '';
+        if(dr?.max && d > dr.max) return '';
+        return d;
+    }
+
+    function applyDateStateForScope(scope, dr, options = {}){
+        const forceUploadedDate = options.forceUploadedDate === true;
+        const uploadedDate = pickPreferredDateInRange(dr, getLastUploadMaxDate());
+        const restored = restoreScopeDateState(scope, dr);
+
+        // 1) 上传后的“粘性日期”优先
+        if(forceUploadedDate && uploadedDate){
+            const currentStart = ($('start')?.value || '').trim();
+
+            $('end').value = uploadedDate;
+            $('heatDate').value = uploadedDate;
+
+            if(!/^\d{4}-\d{2}-\d{2}$/.test(currentStart) || currentStart > uploadedDate){
+                $('start').value = dr?.min || uploadedDate;
+            }else{
+                $('start').value = currentStart;
+            }
+            return;
+        }
+
+        // 2) 其次恢复该 scope 自己之前保存的日期
+        if(restored){
+            return;
+        }
+
+        // 3) 最后才回退到库里的范围
+        $('start').value = dr?.min || '';
+        $('end').value = dr?.max || '';
+        $('heatDate').value = '';
+    }
+
     async function fetchLatestHeatDate(scope, metricsCsv){
         if(!metricsCsv) return '';
         const end = ($('end')?.value || '').trim();
@@ -403,8 +469,35 @@ function setMultiSelected(sel, values){
         const resp = await jget(url);
         return resp?.hasData ? (resp.date || resp.latestDate || '') : '';
     }
+    function normalizeBizDateText(s){
+        return String(s || '')
+            .replace(/[.\/年]/g, '-')
+            .replace(/月/g, '-')
+            .replace(/日/g, '')
+            .trim();
+    }
 
+    function extractMaxDateFromSelectedFiles(fileList){
+        const arr = Array.from(fileList || []);
+        const dates = [];
 
+        for(const f of arr){
+            const name = String(f?.name || '');
+
+            // 匹配 2026.01.31 / 2026-01-31 / 2026_01_31 / 2026年01月31日
+            const m = name.match(/(20\d{2})[.\-_\/年](\d{1,2})[.\-_\/月](\d{1,2})(?:日)?/);
+            if(!m) continue;
+
+            const y = m[1];
+            const mm = String(m[2]).padStart(2, '0');
+            const dd = String(m[3]).padStart(2, '0');
+            dates.push(`${y}-${mm}-${dd}`);
+        }
+
+        if(dates.length === 0) return '';
+        dates.sort();
+        return dates[dates.length - 1];
+    }
         async function syncHeatDate(scope){
         let metrics = ($('heatMetrics').value || '').trim();
         const selVals = getMultiSelected($('heatMetricsSel'));
@@ -654,132 +747,6 @@ function setMultiSelected(sel, values){
         return unique;
     }
 
-
-        async function refreshMeta(){
-        $('badgeStatus').textContent = '加载元数据…';
-        try{
-        const meta = await jget('/api/meta');
-
-        const scopesRaw = Array.isArray(meta?.scopes) ? meta.scopes : [];
-        const scopeStatsRaw = Array.isArray(meta?.scopeStats) ? meta.scopeStats : [];
-        const metricsRaw = Array.isArray(meta?.metrics) ? meta.metrics : [];
-        const branchesRaw = Array.isArray(meta?.branches) ? meta.branches : [];
-
-        if(!Array.isArray(meta?.scopes) || !Array.isArray(meta?.metrics) || !Array.isArray(meta?.branches)){
-        log('[WARN] 元数据字段缺失或格式异常，已使用空数组兜底。');
-    }
-
-        const scopes = scopesRaw.map(s => {
-        const hit = scopeStatsRaw.find(row => String(row?.key || '') === String(s));
-        return {
-        key: s,
-        name: hit?.name || s
-    };
-    });
-
-        SCOPE_OPTIONS = (scopes || [])
-        .map(s => ({ key: (s?.key || ''), name: (s?.name || s?.key || '') }))
-        .filter(x => x.key);
-
-        fillSelect($('scopeSel'), SCOPE_OPTIONS, x=>x.key, x=>x.name);
-
-        const metrics = metricsRaw;
-        METRIC_OPTIONS = metrics || [];
-
-        const metricLabel = (m) => {
-        const code = (m.metric ?? m.key);
-        const kind = String(m.kind || '').toUpperCase();
-        const kindTip = kind === 'DELTA' ? '变化量' : (kind === 'LEVEL' ? '存量' : (kind === 'RATE' ? '比例' : ''));
-        return `${(m.name ?? code)}（${code}${kindTip ? ' / ' + kindTip : ''}）`;
-    };
-
-        fillSelect($('metricSel'), METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
-        fillSelect($('heatMetricsSel'), METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
-
-        const deltaMetrics = METRIC_OPTIONS.filter(m => ['DELTA','LEVEL'].includes(String(m.kind || '').toUpperCase()));
-        const baseMetrics = METRIC_OPTIONS.filter(m => String(m.kind || '').toUpperCase() === 'LEVEL');
-        fillSelect($('deltaSel'), deltaMetrics.length ? deltaMetrics : METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
-        fillSelect($('baseSel'), baseMetrics.length ? baseMetrics : METRIC_OPTIONS, m=>(m.metric ?? m.key), metricLabel);
-
-        let defaultScope = (meta?.suggestedScope || SCOPE_OPTIONS?.[0]?.key || '');
-        const defaultMetric = METRIC_OPTIONS?.[0]?.metric ?? METRIC_OPTIONS?.[0]?.key ?? '';
-
-        $('scopeSel').value = defaultScope;
-        $('metricSel').value = defaultMetric;
-        setBadge('badgeScope', getScopeName(defaultScope) || '-');
-
-        // 这次不再先全局写死日期，而是按当前 scope 单独取日期范围
-        let dr = {};
-        try{
-        const drResp = await fetchDateRangeByScope(defaultScope);
-        if(drResp && typeof drResp === 'object') dr = drResp;
-    }catch(e){
-        log('[WARN] 获取日期范围失败（/api/dateRange）：' + e.message);
-    }
-
-        if(dr && dr.hasData && dr.min && dr.max){
-        setBadge('badgeRange', `${dr.min} ~ ${dr.max}`);
-
-        // 优先恢复该 scope 上一次用户选过的日期；没有才回落到 min/max
-        const restored = restoreScopeDateState(defaultScope, dr);
-        if(!restored){
-        $('start').value = dr.min;
-        $('end').value = dr.max;
-        $('heatDate').value = '';
-    }
-    } else {
-        setBadge('badgeRange', '-');
-        $('start').value = '';
-        $('end').value = '';
-        $('heatDate').value = '';
-        log('[INFO] 当前暂无数据，请先批量导入 Excel');
-    }
-
-        ALL_BRANCHES = normalizeBranchOptions(branchesRaw);
-        renderBranchList();
-        setBadge('badgeBranchCnt', ALL_BRANCHES.length);
-
-        $('badgeStatus').textContent = '就绪';
-
-        if($('heatMetricsSel') && $('heatMetricsSel').options.length > 0 && getMultiSelected($('heatMetricsSel')).length === 0){
-        const common = Array.from($('heatMetricsSel').options).slice(0,3).map(o=>o.value);
-        setMultiSelected($('heatMetricsSel'), common);
-        $('heatMetrics').value = common.join(',');
-    } else {
-        $('heatMetrics').value = getMultiSelected($('heatMetricsSel')).join(',');
-    }
-
-        // 只在 heatDate 为空时，自动同步最新热力图日期
-        if(!$('heatDate').value){
-        await syncHeatDate(defaultScope);
-    }
-
-        if($('deltaSel') && $('deltaSel').options.length > 0 && !$('deltaSel').value){
-        $('deltaSel').value = $('deltaSel').options[0].value;
-    }
-        if($('baseSel') && $('baseSel').options.length > 0 && !$('baseSel').value){
-        $('baseSel').value = $('baseSel').options[0].value;
-        $('deltaMetric').value = $('deltaSel').value;
-    }
-
-        pickGrowthDefaults();
-        log(`[OK] 元数据加载完成：scopes=${(scopes||[]).length} metrics=${(metrics||[]).length} branches=${ALL_BRANCHES.length}`);
-    }catch(e){
-        if(e?.code === 'DB_NOT_READY'){
-        $('badgeStatus').textContent = '数据库未就绪';
-        setBadge('badgeRange', '-');
-        setBadge('badgeScope', '-');
-        setBadge('badgeBranchCnt', '-');
-        log('[ERR] 数据库初始化未完成，请先执行 schema-mysql.sql');
-        return;
-    }
-        $('badgeStatus').textContent = '初始化失败';
-        log(`[ERR] 初始化失败：${e.message}`);
-        console.error(e);
-    }
-    }
-
-
     function renderBranchList(){
         const kw = $('branchSearch').value || '';
         const list = filteredBranches(ALL_BRANCHES, kw);
@@ -803,22 +770,56 @@ function setMultiSelected(sel, values){
         }
     }
     async function doUpload(){
-        const files = $('fileInput').files;
-        if(!files || files.length===0){
+        const files = $('fileInput')?.files;
+        if(!files || files.length === 0){
             log('[WARN] 未选择文件');
             return;
         }
+
+        const uploadMaxDate = extractMaxDateFromSelectedFiles(files);
+        if(uploadMaxDate){
+            setLastUploadMaxDate(uploadMaxDate);
+            setUploadDateSticky(true);
+        }else{
+            clearLastUploadMaxDate();
+            setUploadDateSticky(false);
+        }
+
         const fd = new FormData();
-        Array.from(files).forEach(f=>fd.append('files', f));
+        Array.from(files).forEach(f => fd.append('files', f));
 
         $('btnUpload').disabled = true;
         try{
             log(`[INFO] 开始上传：${files.length} 个文件…`);
             const res = await jpost('/api/upload', fd);
             log('[INFO] 导入任务已提交：jobId=' + res.jobId);
+
             const done = await waitJob(res.jobId);
             log('[OK] 导入完成：' + JSON.stringify(done));
-            await refreshMeta();
+
+            await refreshMeta({ forceLatestRange: false, forceUploadedDate: true });
+
+            if(uploadMaxDate && /^\d{4}-\d{2}-\d{2}$/.test(uploadMaxDate)){
+                $('end').value = uploadMaxDate;
+                $('heatDate').value = uploadMaxDate;
+
+                const currentStart = ($('start')?.value || '').trim();
+                if(!/^\d{4}-\d{2}-\d{2}$/.test(currentStart) || currentStart > uploadMaxDate){
+                    $('start').value = $('start')?.value || uploadMaxDate;
+                }
+
+                log(`[INFO] 本次上传文件最大日期=${uploadMaxDate}，已同步到结束日期和热力图日期`);
+            }else{
+                await syncHeatDate($('scopeSel')?.value || '');
+                log('[WARN] 未能从上传文件名解析日期，已退回数据库最新日期逻辑');
+            }
+
+            saveScopeDateState($('scopeSel')?.value || '');
+
+            await doHeat({
+                forceLatest: false,
+                forceDate: uploadMaxDate || ''
+            });
         }catch(e){
             log('[ERR] 导入失败：' + e.message);
             console.error(e);
@@ -826,105 +827,261 @@ function setMultiSelected(sel, values){
             $('btnUpload').disabled = false;
         }
     }
+    async function refreshMeta(options = {}){
+        const forceLatestRange = options.forceLatestRange === true;
+        const forceUploadedDate = options.forceUploadedDate === true;
 
-
-        async function doHeat(){
+        $('badgeStatus').textContent = '加载元数据…';
         try{
-        const scope = $('scopeSel').value || '';
+            const meta = await jget('/api/meta');
 
-        let metrics = ($('heatMetrics').value || '').trim();
-        const selVals = getMultiSelected($('heatMetricsSel'));
-        if(selVals.length) metrics = selVals.join(',');
-        $('heatMetrics').value = metrics;
+            const scopesRaw = Array.isArray(meta?.scopes) ? meta.scopes : [];
+            const scopeStatsRaw = Array.isArray(meta?.scopeStats) ? meta.scopeStats : [];
+            const metricsRaw = Array.isArray(meta?.metrics) ? meta.metrics : [];
+            const branchesRaw = Array.isArray(meta?.branches) ? meta.branches : [];
 
-        if(!metrics){
-        log('[WARN] 热力图指标不能为空');
-        heatChart.clear();
-        return;
+            if(!Array.isArray(meta?.scopes) || !Array.isArray(meta?.metrics) || !Array.isArray(meta?.branches)){
+                log('[WARN] 元数据字段缺失或格式异常，已使用空数组兜底。');
+            }
+
+            const scopes = scopesRaw.map(s => {
+                const hit = scopeStatsRaw.find(row => String(row?.key || '') === String(s));
+                return {
+                    key: s,
+                    name: hit?.name || s
+                };
+            });
+
+            const oldScope = ($('scopeSel')?.value || '').trim();
+
+            SCOPE_OPTIONS = (scopes || [])
+                .map(s => ({ key: (s?.key || ''), name: (s?.name || s?.key || '') }))
+                .filter(x => x.key);
+
+            fillSelect($('scopeSel'), SCOPE_OPTIONS, x => x.key, x => x.name);
+
+            METRIC_OPTIONS = metricsRaw || [];
+
+            const metricLabel = (m) => {
+                const code = (m.metric ?? m.key);
+                const kind = String(m.kind || '').toUpperCase();
+                const kindTip =
+                    kind === 'DELTA' ? '变化量' :
+                        kind === 'LEVEL' ? '存量' :
+                            kind === 'RATE' ? '比例' : '';
+                return `${(m.name ?? code)}（${code}${kindTip ? ' / ' + kindTip : ''}）`;
+            };
+
+            fillSelect($('metricSel'), METRIC_OPTIONS, m => (m.metric ?? m.key), metricLabel);
+            fillSelect($('heatMetricsSel'), METRIC_OPTIONS, m => (m.metric ?? m.key), metricLabel);
+
+            const deltaMetrics = METRIC_OPTIONS.filter(m => ['DELTA','LEVEL'].includes(String(m.kind || '').toUpperCase()));
+            const baseMetrics = METRIC_OPTIONS.filter(m => String(m.kind || '').toUpperCase() === 'LEVEL');
+            fillSelect($('deltaSel'), deltaMetrics.length ? deltaMetrics : METRIC_OPTIONS, m => (m.metric ?? m.key), metricLabel);
+            fillSelect($('baseSel'), baseMetrics.length ? baseMetrics : METRIC_OPTIONS, m => (m.metric ?? m.key), metricLabel);
+
+            const defaultScope = oldScope || meta?.suggestedScope || SCOPE_OPTIONS?.[0]?.key || '';
+            const defaultMetric = METRIC_OPTIONS?.[0]?.metric ?? METRIC_OPTIONS?.[0]?.key ?? '';
+
+            $('scopeSel').value = defaultScope;
+            if(!$('metricSel').value){
+                $('metricSel').value = defaultMetric;
+            }
+            setBadge('badgeScope', getScopeName(defaultScope) || '-');
+
+            let dr = {};
+            try{
+                const drResp = await fetchDateRangeByScope(defaultScope);
+                if(drResp && typeof drResp === 'object') dr = drResp;
+            }catch(e){
+                log('[WARN] 获取日期范围失败（/api/dateRange）：' + e.message);
+            }
+
+            if(dr && dr.hasData && dr.min && dr.max){
+                setBadge('badgeRange', `${dr.min} ~ ${dr.max}`);
+
+                const uploadedDateInRange = pickPreferredDateInRange(dr, getLastUploadMaxDate());
+                const shouldUseUploadedDate =
+                    forceUploadedDate ||
+                    (isUploadDateSticky() && !!uploadedDateInRange);
+
+                if(forceLatestRange){
+                    $('start').value = dr.min;
+                    $('end').value = dr.max;
+                    $('heatDate').value = '';
+                }else{
+                    applyDateStateForScope(defaultScope, dr, {
+                        forceUploadedDate: shouldUseUploadedDate
+                    });
+                }
+            }else{
+                setBadge('badgeRange', '-');
+                $('start').value = '';
+                $('end').value = '';
+                $('heatDate').value = '';
+                log('[INFO] 当前暂无数据，请先批量导入 Excel');
+            }
+
+            ALL_BRANCHES = normalizeBranchOptions(branchesRaw);
+            renderBranchList();
+            setBadge('badgeBranchCnt', ALL_BRANCHES.length);
+
+            $('badgeStatus').textContent = '就绪';
+
+            if($('heatMetricsSel') && $('heatMetricsSel').options.length > 0 && getMultiSelected($('heatMetricsSel')).length === 0){
+                const common = Array.from($('heatMetricsSel').options).slice(0,3).map(o => o.value);
+                setMultiSelected($('heatMetricsSel'), common);
+                $('heatMetrics').value = common.join(',');
+            }else{
+                $('heatMetrics').value = getMultiSelected($('heatMetricsSel')).join(',');
+            }
+
+            // 只有 heatDate 还空着，才补 latest；避免把上传后的 0131 又覆盖回数据库最新
+            if(!$('heatDate').value){
+                await syncHeatDate(defaultScope);
+            }
+
+            if($('deltaSel') && $('deltaSel').options.length > 0 && !$('deltaSel').value){
+                $('deltaSel').value = $('deltaSel').options[0].value;
+            }
+            if($('baseSel') && $('baseSel').options.length > 0 && !$('baseSel').value){
+                $('baseSel').value = $('baseSel').options[0].value;
+                $('deltaMetric').value = $('deltaSel').value;
+            }
+
+            pickGrowthDefaults();
+            saveScopeDateState(defaultScope);
+            log(`[OK] 元数据加载完成：scopes=${(scopes || []).length} metrics=${(metricsRaw || []).length} branches=${ALL_BRANCHES.length}`);
+        }catch(e){
+            if(e?.code === 'DB_NOT_READY'){
+                $('badgeStatus').textContent = '数据库未就绪';
+                setBadge('badgeRange', '-');
+                setBadge('badgeScope', '-');
+                setBadge('badgeBranchCnt', '-');
+                log('[ERR] 数据库初始化未完成，请先执行 schema-mysql.sql');
+                return;
+            }
+            $('badgeStatus').textContent = '初始化失败';
+            log(`[ERR] 初始化失败：${e.message}`);
+            console.error(e);
+        }
     }
 
-        const latest = await fetchLatestHeatDate(scope, metrics);
+    async function doHeat(options = {}){
+        try{
+            const forceLatest = options.forceLatest === true;
+            const forcedDate = String(options.forceDate || '').trim();
+            const scope = $('scopeSel').value || '';
 
-        // 先尊重用户当前输入的 heatDate，不要一上来就覆盖
-        let date = ($('heatDate').value || '').trim();
+            let metrics = ($('heatMetrics').value || '').trim();
+            const selVals = getMultiSelected($('heatMetricsSel'));
+            if(selVals.length) metrics = selVals.join(',');
+            $('heatMetrics').value = metrics;
 
-        // 当前 heatDate 非法，才自动回填 latest
-        if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){
-        if(latest && /^\d{4}-\d{2}-\d{2}$/.test(latest)){
-        date = latest;
-        $('heatDate').value = latest;
-    }else{
-        $('heatDate').value = '';
-        heatChart.clear();
-        log('[WARN] 当前口径与所选指标暂无可用热力图日期');
-        return;
-    }
-    }
+            if(!metrics){
+                log('[WARN] 热力图指标不能为空');
+                heatChart.clear();
+                return;
+            }
 
-        // 如果用户填的日期晚于当前 end，则截断到 end
-        const end = ($('end')?.value || '').trim();
-        if(/^\d{4}-\d{2}-\d{2}$/.test(end) && date > end){
-        date = end;
-        $('heatDate').value = end;
-    }
+            let date = ($('heatDate').value || '').trim();
+            const latest = await fetchLatestHeatDate(scope, metrics);
 
-        log(`[DEBUG] doHeat scope=${scope}, metrics=${metrics}, latest=${latest}, finalDate=${date}`);
+            // 第一优先级：调用方明确指定 forceDate（用于“本次上传文件最后一天”）
+            if(/^\d{4}-\d{2}-\d{2}$/.test(forcedDate)){
+                date = forcedDate;
+                $('heatDate').value = forcedDate;
+            }
+            // 第二优先级：明确要求走数据库 latest
+            else if(forceLatest){
+                if(latest && /^\d{4}-\d{2}-\d{2}$/.test(latest)){
+                    date = latest;
+                    $('heatDate').value = latest;
+                }else{
+                    $('heatDate').value = '';
+                    heatChart.clear();
+                    log('[WARN] 当前口径与所选指标暂无可用热力图日期');
+                    return;
+                }
+            }
+            // 第三优先级：如果当前 heatDate 无效，才补 latest
+            else if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){
+                if(latest && /^\d{4}-\d{2}-\d{2}$/.test(latest)){
+                    date = latest;
+                    $('heatDate').value = latest;
+                }else{
+                    $('heatDate').value = '';
+                    heatChart.clear();
+                    log('[WARN] 当前口径与所选指标暂无可用热力图日期');
+                    return;
+                }
+            }
 
-        const resp = await jget(
-        `/api/heatmap?scope=${encodeURIComponent(scope)}&date=${encodeURIComponent(date)}&metrics=${encodeURIComponent(metrics)}`
-        );
+            // 若用户手填日期晚于结束日期，则截断到结束日期
+            const end = ($('end')?.value || '').trim();
+            if(/^\d{4}-\d{2}-\d{2}$/.test(end) && /^\d{4}-\d{2}-\d{2}$/.test(date) && date > end){
+                date = end;
+                $('heatDate').value = end;
+            }
 
-        if(resp && typeof resp === 'object' && resp.code && resp.message){
-        heatChart.clear();
-        log('[ERR] 热力图失败: ' + resp.message);
-        return;
-    }
+            log(`[DEBUG] doHeat scope=${scope}, metrics=${metrics}, latest=${latest}, finalDate=${date}, forceLatest=${forceLatest}, forceDate=${forcedDate || '-'}`);
 
-        if(!Array.isArray(resp?.data) || !Array.isArray(resp?.metrics) || !Array.isArray(resp?.branches)){
-        heatChart.clear();
-        log('[ERR] 热力图失败: 返回字段缺失（metrics/branches/data）');
-        return;
-    }
+            const resp = await jget(
+                `/api/heatmap?scope=${encodeURIComponent(scope)}&date=${encodeURIComponent(date)}&metrics=${encodeURIComponent(metrics)}`
+            );
 
-        const invalidRow = (resp.data || []).find(row => !Array.isArray(row) || row.length !== 5);
-        if(invalidRow){
-        heatChart.clear();
-        log('[ERR] 热力图失败: data 单元结构必须为 [xIndex,yIndex,colorValue,rawValue,hasData]');
-        return;
-    }
+            if(resp && typeof resp === 'object' && resp.code && resp.message){
+                heatChart.clear();
+                log('[ERR] 热力图失败: ' + resp.message);
+                return;
+            }
 
-        const metricStats = new Map();
-        (resp.data || []).forEach(row => {
-        if(!Array.isArray(row)) return;
-        const metric = resp.metrics?.[row[0]];
-        if(!metric) return;
-        const hasData = row[4] === true;
-        const stat = metricStats.get(metric) || { hasData: false };
-        if(hasData) stat.hasData = true;
-        metricStats.set(metric, stat);
-    });
-        updateHeatMetricOptionsAvailability(metricStats);
+            if(!Array.isArray(resp?.data) || !Array.isArray(resp?.metrics) || !Array.isArray(resp?.branches)){
+                heatChart.clear();
+                log('[ERR] 热力图失败: 返回字段缺失（metrics/branches/data）');
+                return;
+            }
 
-        if(resp?.meta?.allNull === true){
-        heatChart.clear();
-        log('[WARN] 当前日期/口径/指标下无热力图数据');
-        return;
-    }
+            const invalidRow = (resp.data || []).find(row => !Array.isArray(row) || row.length !== 5);
+            if(invalidRow){
+                heatChart.clear();
+                log('[ERR] 热力图失败: data 单元结构必须为 [xIndex,yIndex,colorValue,rawValue,hasData]');
+                return;
+            }
 
-        const hasAnyData = (resp.data || []).some(row => Array.isArray(row) && row[4] === true);
-        if(!hasAnyData){
-        heatChart.clear();
-        log('[WARN] 当前日期/口径/指标下无热力图数据');
-        return;
-    }
+            const metricStats = new Map();
+            (resp.data || []).forEach(row => {
+                if(!Array.isArray(row)) return;
+                const metric = resp.metrics?.[row[0]];
+                if(!metric) return;
+                const hasData = row[4] === true;
+                const stat = metricStats.get(metric) || { hasData: false };
+                if(hasData) stat.hasData = true;
+                metricStats.set(metric, stat);
+            });
+            updateHeatMetricOptionsAvailability(metricStats);
 
-        renderHeatmap(resp);
-        log('[OK] 热力图刷新完成');
-    }catch(e){
-        heatChart.clear();
-        log('[ERR] 热力图失败: ' + e.message);
-        console.error(e);
-    }
+            if(resp?.meta?.allNull === true){
+                heatChart.clear();
+                log('[WARN] 当前日期/口径/指标下无热力图数据');
+                return;
+            }
+
+            const hasAnyData = (resp.data || []).some(row => Array.isArray(row) && row[4] === true);
+            if(!hasAnyData){
+                heatChart.clear();
+                log('[WARN] 当前日期/口径/指标下无热力图数据');
+                return;
+            }
+
+            renderHeatmap(resp);
+            saveScopeDateState(scope);
+            log('[OK] 热力图刷新完成');
+        }catch(e){
+            heatChart.clear();
+            log('[ERR] 热力图失败: ' + e.message);
+            console.error(e);
+        }
     }
 
 
@@ -984,24 +1141,47 @@ function setMultiSelected(sel, values){
     }
 
     function bindEvents(){
-        document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click', ()=>activeTab(t.dataset.tab)));
+        document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', ()=>activeTab(t.dataset.tab)));
+
         $('btnUpload').addEventListener('click', doUpload);
         $('btnRefresh').addEventListener('click', refreshMeta);
-        $('btnHeat').addEventListener('click', doHeat);
-        $('btnHeatPickAll')?.addEventListener('click', async ()=>{ setMultiSelected($('heatMetricsSel'), Array.from($('heatMetricsSel')?.options||[]).map(o=>o.value)); $('heatMetrics').value = getMultiSelected($('heatMetricsSel')).join(','); await syncHeatDate($('scopeSel').value || ''); });
-        $('btnHeatPickNone')?.addEventListener('click', async ()=>{ setMultiSelected($('heatMetricsSel'), []); $('heatMetrics').value = ''; await syncHeatDate($('scopeSel').value || ''); });
-        $('btnHeatPickDefault')?.addEventListener('click', async ()=>{ const defaults = pickHeatDefaultMetrics(new Map(Array.from(($('heatMetricsSel')?.options||[])).map(o=>[o.value,{hasData:!o.disabled}] ))); setMultiSelected($('heatMetricsSel'), defaults); $('heatMetrics').value = defaults.join(','); await syncHeatDate($('scopeSel').value || ''); });
+        $('btnHeat').addEventListener('click', ()=>doHeat());
+
+        $('btnHeatPickAll')?.addEventListener('click', async ()=>{
+            setMultiSelected($('heatMetricsSel'), Array.from($('heatMetricsSel')?.options || []).map(o => o.value));
+            $('heatMetrics').value = getMultiSelected($('heatMetricsSel')).join(',');
+            await syncHeatDate($('scopeSel').value || '');
+        });
+
+        $('btnHeatPickNone')?.addEventListener('click', async ()=>{
+            setMultiSelected($('heatMetricsSel'), []);
+            $('heatMetrics').value = '';
+            await syncHeatDate($('scopeSel').value || '');
+        });
+
+        $('btnHeatPickDefault')?.addEventListener('click', async ()=>{
+            const defaults = pickHeatDefaultMetrics(
+                new Map(Array.from(($('heatMetricsSel')?.options || [])).map(o => [o.value, { hasData: !o.disabled }]))
+            );
+            setMultiSelected($('heatMetricsSel'), defaults);
+            $('heatMetrics').value = defaults.join(',');
+            await syncHeatDate($('scopeSel').value || '');
+        });
+
         $('heatMetricsSel')?.addEventListener('change', async ()=>{
             const vals = getMultiSelected($('heatMetricsSel'));
             $('heatMetrics').value = vals.join(',');
             await syncHeatDate($('scopeSel').value || '');
+            saveScopeDateState($('scopeSel')?.value || '');
         });
+
         $('btnTrend').addEventListener('click', doTrendMulti);
         $('btnGrowth').addEventListener('click', doGrowth);
 
         $('scopeSel').addEventListener('change', async ()=>{
             const scope = $('scopeSel').value || '';
             setBadge('badgeScope', getScopeName(scope) || '-');
+
             try{
                 ALL_BRANCHES = normalizeBranchOptions(await jget('/api/branches?scope=' + encodeURIComponent(scope)));
                 if (ALL_BRANCHES.length === 0) {
@@ -1010,34 +1190,80 @@ function setMultiSelected(sel, values){
                 }
 
                 const dr = await fetchDateRangeByScope(scope);
-                if(dr?.min) $('start').value = dr.min;
-                if(dr?.max) $('end').value = dr.max;
 
-                $('branchSearch').value = '';
-                renderBranchList();
-                await syncHeatDate(scope);
-                log(`[OK] 切换口径：${scope}，branches=${ALL_BRANCHES.length}`);
-                await doHeat();
-                saveScopeDateState(scope);
+                if(dr?.min && dr?.max){
+                    setBadge('badgeRange', `${dr.min} ~ ${dr.max}`);
+
+                    const uploadedDateInRange = pickPreferredDateInRange(dr, getLastUploadMaxDate());
+                    const shouldUseUploadedDate = isUploadDateSticky() && !!uploadedDateInRange;
+
+                    applyDateStateForScope(scope, dr, {
+                        forceUploadedDate: shouldUseUploadedDate
+                    });
+
+                    if(!$('heatDate').value){
+                        await syncHeatDate(scope);
+                    }
+
+                    $('branchSearch').value = '';
+                    renderBranchList();
+
+                    log(`[OK] 切换口径：${scope}，branches=${ALL_BRANCHES.length}`);
+
+                    await doHeat({
+                        forceLatest: false,
+                        forceDate: shouldUseUploadedDate ? uploadedDateInRange : ''
+                    });
+
+                    saveScopeDateState(scope);
+                }else{
+                    $('start').value = '';
+                    $('end').value = '';
+                    $('heatDate').value = '';
+                    $('branchSearch').value = '';
+                    renderBranchList();
+                    heatChart.clear();
+                }
             }catch(e){
                 log('[ERR] 获取网点失败：' + e.message);
+                console.error(e);
             }
         });
 
         $('branchSearch').addEventListener('input', renderBranchList);
-        $('btnSelectAll').addEventListener('click', ()=> Array.from($('branchMulti').options).forEach(o=>o.selected=true));
-        $('btnClear').addEventListener('click', ()=> Array.from($('branchMulti').options).forEach(o=>o.selected=false));
-        window.addEventListener('resize', ()=>{ heatChart.resize(); trendChart.resize(); growthChart.resize(); });
+        $('btnSelectAll').addEventListener('click', ()=> Array.from($('branchMulti').options).forEach(o => o.selected = true));
+        $('btnClear').addEventListener('click', ()=> Array.from($('branchMulti').options).forEach(o => o.selected = false));
+
+        window.addEventListener('resize', ()=>{
+            heatChart.resize();
+            trendChart.resize();
+            growthChart.resize();
+        });
+
         $('deltaSel')?.addEventListener('change', ()=>{
             $('deltaMetric').value = $('deltaSel').value || '';
             pickGrowthDefaults();
         });
+
         $('baseSel')?.addEventListener('change', ()=>{
             $('baseMetric').value = $('baseSel').value || '';
         });
-        $('start')?.addEventListener('change', ()=> saveScopeDateState($('scopeSel')?.value || ''));
-        $('end')?.addEventListener('change', ()=> saveScopeDateState($('scopeSel')?.value || ''));
-        $('heatDate')?.addEventListener('change', ()=> saveScopeDateState($('scopeSel')?.value || ''));
+
+        // 用户手动改日期 => 关闭“上传日期粘性”
+        $('start')?.addEventListener('change', ()=>{
+            setUploadDateSticky(false);
+            saveScopeDateState($('scopeSel')?.value || '');
+        });
+
+        $('end')?.addEventListener('change', ()=>{
+            setUploadDateSticky(false);
+            saveScopeDateState($('scopeSel')?.value || '');
+        });
+
+        $('heatDate')?.addEventListener('change', ()=>{
+            setUploadDateSticky(false);
+            saveScopeDateState($('scopeSel')?.value || '');
+        });
     }
 
     async function initPage(){
