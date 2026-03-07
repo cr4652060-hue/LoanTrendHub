@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -189,7 +190,7 @@ public class QueryService {
                 continue;
             }
             boolean hasData = row.val() != null;
-            data.add(List.of(xi, yi, row.val(), hasData));
+            data.add(Arrays.asList(xi, yi, row.val(), hasData));
             cells.add(new HeatmapResponse.Cell(row.branch(), row.metric(), row.val(), hasData));
             if (!hasData) {
                 continue;

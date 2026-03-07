@@ -380,13 +380,13 @@ function setMultiSelected(sel, values){
             log('[ERR] 热力图失败: 图表容器不存在');
             return;
         }
-        const x = resp?.x || resp?.metrics || [];
-        const y = resp?.y || resp?.branches || [];
-        const data = resp?.data || [];
-        if(!Array.isArray(x) || !Array.isArray(y) || !Array.isArray(data)){
-            log('[ERR] 热力图失败: 返回结构异常（x/y/data 必须为数组）');
+        if(!Array.isArray(resp?.metrics) || !Array.isArray(resp?.branches) || !Array.isArray(resp?.data)){
+            log('[ERR] 热力图失败: 返回字段缺失（metrics/branches/data）');
             return;
         }
+        const x = resp.metrics;
+        const y = resp.branches;
+        const data = resp.data;
         const title = resp?.title || `热力图：${getScopeName(resp?.scope || $('scopeSel')?.value || '')}`;
         const unit = resp?.unit || '';
         let min = Number.isFinite(resp?.min) ? resp.min : null;
@@ -406,8 +406,9 @@ function setMultiSelected(sel, values){
             tooltip: {
                 position: 'top',
                 formatter: (p) => {
-                    const val = Array.isArray(p?.data) ? p.data[2] : '-';
-                    return `${y[p.data[1]] || ''}<br/>${x[p.data[0]] || ''}：${val}${unit ? ' ' + unit : ''}`;
+                    const rawVal = Array.isArray(p?.data) ? p.data[2] : null;
+                    const val = rawVal === null || rawVal === undefined ? '无数据' : rawVal;
+                    return `${y[p.data[1]] || ''}<br/>${x[p.data[0]] || ''}：${val}${(val === '无数据' || !unit) ? '' : ' ' + unit}`;
                 }
             },
             grid: { left: 130, right: 42, top: 56, bottom: 100 },
@@ -639,6 +640,11 @@ function setMultiSelected(sel, values){
             }
             if(!Array.isArray(resp?.data) || !Array.isArray(resp?.metrics) || !Array.isArray(resp?.branches)){
                 log('[ERR] 热力图失败: 返回字段缺失（metrics/branches/data）');
+                return;
+            }
+            if(resp?.meta?.allNull === true){
+                heatChart.clear();
+                log('[WARN] 当前日期/口径/指标下无热力图数据');
                 return;
             }
             if(resp.data.length === 0){

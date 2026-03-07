@@ -45,4 +45,14 @@ public class ApiExceptionHandler {
                 "message", ex.getMessage() == null ? "\u8bf7\u6c42\u53c2\u6570\u4e0d\u5408\u6cd5" : ex.getMessage()
         ));
     }
+    @ExceptionHandler({NullPointerException.class, RuntimeException.class})
+    public ResponseEntity<Map<String, Object>> handleHeatmapRuntime(RuntimeException ex) {
+        String detail = ex.getMessage() == null || ex.getMessage().isBlank()
+                ? ex.getClass().getSimpleName()
+                : ex.getMessage();
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "code", "HEATMAP_ERROR",
+                "message", "热力图处理失败：" + detail
+        ));
+    }
 }
